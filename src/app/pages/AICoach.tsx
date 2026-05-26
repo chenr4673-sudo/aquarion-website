@@ -116,7 +116,7 @@ export default function AICoach() {
 
     try {
       const userContext = getUserContext();
-      const { projectId, publicAnonKey } = await import('/utils/supabase/info');
+      const { projectId, publicAnonKey } = await import('../../utils/supabase/info');
 
       // 调用后端 API（安全！）
       const response = await fetch(
