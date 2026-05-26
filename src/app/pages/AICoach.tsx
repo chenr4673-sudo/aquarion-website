@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { MessageCircle, Send, Loader2, AlertTriangle, Dumbbell } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import AICoachLocked from './AICoachLocked';
+import { projectId, publicAnonKey } from '../../utils/supabase/info';
 
 interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -116,7 +117,6 @@ export default function AICoach() {
 
     try {
       const userContext = getUserContext();
-      const { projectId, publicAnonKey } = await import('../../utils/supabase/info');
 
       // 调用后端 API（安全！）
       const response = await fetch(
