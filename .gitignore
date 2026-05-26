@@ -35,8 +35,9 @@ pnpm-debug.log*
 # OS
 Thumbs.db
 
-# Supabase (不部署到 Vercel)
-supabase/
+# Supabase functions (不部署到 Vercel，但 info 文件需要)
+supabase/functions/
+!src/utils/supabase/
 
 # 临时文件
 *.tar.gz
