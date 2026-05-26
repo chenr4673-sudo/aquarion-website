@@ -1,0 +1,88 @@
+/* OpenAI ChatKit Custom Styles for OPIUM Dark Theme */
+
+.chatkit-container {
+  --chatkit-bg-primary: #000000;
+  --chatkit-bg-secondary: #0a0a0a;
+  --chatkit-bg-tertiary: #111111;
+  --chatkit-border-color: #1a1a1a;
+  --chatkit-text-primary: #ffffff;
+  --chatkit-text-secondary: #999999;
+  --chatkit-accent: #dc143c;
+  --chatkit-accent-hover: #b8102f;
+}
+
+.chatkit-container * {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* Chat message bubbles */
+.chatkit-container [class*="message-user"] {
+  background-color: var(--chatkit-accent) !important;
+  color: #ffffff !important;
+  border-radius: 0 !important;
+}
+
+.chatkit-container [class*="message-assistant"] {
+  background-color: var(--chatkit-bg-tertiary) !important;
+  color: var(--chatkit-text-primary) !important;
+  border: 1px solid var(--chatkit-border-color) !important;
+  border-radius: 0 !important;
+}
+
+/* Input area */
+.chatkit-container [class*="input"] {
+  background-color: var(--chatkit-bg-secondary) !important;
+  border: 1px solid var(--chatkit-border-color) !important;
+  border-radius: 0 !important;
+  color: var(--chatkit-text-primary) !important;
+}
+
+.chatkit-container [class*="input"]:focus {
+  border-color: var(--chatkit-accent) !important;
+  outline: none !important;
+}
+
+/* Send button */
+.chatkit-container [class*="button-send"],
+.chatkit-container [class*="submit-button"] {
+  background: linear-gradient(135deg, #dc143c 0%, #ff4500 100%) !important;
+  color: #ffffff !important;
+  border-radius: 0 !important;
+  border: none !important;
+}
+
+.chatkit-container [class*="button-send"]:hover,
+.chatkit-container [class*="submit-button"]:hover {
+  opacity: 0.9 !important;
+}
+
+/* Suggestions */
+.chatkit-container [class*="suggestion"] {
+  background-color: var(--chatkit-bg-secondary) !important;
+  border: 1px solid var(--chatkit-border-color) !important;
+  border-radius: 0 !important;
+  color: var(--chatkit-text-primary) !important;
+}
+
+.chatkit-container [class*="suggestion"]:hover {
+  background-color: var(--chatkit-bg-tertiary) !important;
+  border-color: var(--chatkit-accent) !important;
+}
+
+/* Scrollbar */
+.chatkit-container *::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chatkit-container *::-webkit-scrollbar-track {
+  background: var(--chatkit-bg-primary);
+}
+
+.chatkit-container *::-webkit-scrollbar-thumb {
+  background: var(--chatkit-border-color);
+  border-radius: 0;
+}
+
+.chatkit-container *::-webkit-scrollbar-thumb:hover {
+  background: var(--chatkit-accent);
+}
