@@ -3,7 +3,7 @@ import { Button } from '../components/ui/button';
 import { useNavigate } from 'react-router';
 import { useState } from 'react';
 
-const PRICE_AI_COACH = 150;
+const PRICE_AI_COACH = 99;
 
 export default function AICoachLocked() {
   const navigate = useNavigate();
