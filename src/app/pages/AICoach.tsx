@@ -3,6 +3,7 @@ import { MessageCircle, Send, Loader2, AlertTriangle, Dumbbell } from 'lucide-re
 import { Button } from '../components/ui/button';
 import AICoachLocked from './AICoachLocked';
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
+import { findCurrentCycle, getPaidCycles, hasAICoachAccess } from '../utils/paymentAccess';
 
 interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -39,25 +40,8 @@ export default function AICoach() {
 
   // 检查AI教练访问权限
   useEffect(() => {
-    const currentCycleId = localStorage.getItem('currentCycleId');
-    const paidCycles = localStorage.getItem('paidCycles');
-
-    if (!currentCycleId || !paidCycles) {
-      setHasAccess(false);
-      return;
-    }
-
-    const cycles = JSON.parse(paidCycles);
-    const activeCycle = cycles.find((cycle: any) =>
-      cycle.id === currentCycleId && cycle.status === 'active'
-    );
-
-    if (!activeCycle || !activeCycle.hasAICoach) {
-      setHasAccess(false);
-      return;
-    }
-
-    setHasAccess(true);
+    const { cycle } = findCurrentCycle(getPaidCycles());
+    setHasAccess(hasAICoachAccess(cycle));
   }, []);
 
   // 自动滚动到最新消息

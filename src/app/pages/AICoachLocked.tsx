@@ -1,12 +1,11 @@
 import { MessageCircle, Lock, Check, Sparkles } from 'lucide-react';
 import { Button } from '../components/ui/button';
-import { useNavigate } from 'react-router';
 import { useState } from 'react';
+import { addAICoachToCurrentCycle, findCurrentCycle, getPaidCycles, hasAICoachAccess } from '../utils/paymentAccess';
 
 const PRICE_AI_COACH = 99;
 
 export default function AICoachLocked() {
-  const navigate = useNavigate();
   const [isProcessing, setIsProcessing] = useState(false);
 
   const handlePurchase = () => {
@@ -14,47 +13,16 @@ export default function AICoachLocked() {
 
     // 模拟付费流程
     setTimeout(() => {
-      const currentCycleId = localStorage.getItem('currentCycleId');
-      const paidCycles = localStorage.getItem('paidCycles');
+      const { cycle } = findCurrentCycle(getPaidCycles());
 
-      if (!currentCycleId || !paidCycles) {
-        alert('未找到有效的训练周期。请先购买"个人专属计划定制"或"完整 AQUARION 体验"。');
+      if (hasAICoachAccess(cycle)) {
+        alert('你已经拥有当前周期的 AI教练服务。');
         setIsProcessing(false);
-        navigate('/');
+        window.location.reload();
         return;
       }
 
-      const cycles = JSON.parse(paidCycles);
-      const cycleIndex = cycles.findIndex((c: any) => c.id === currentCycleId);
-
-      if (cycleIndex === -1) {
-        alert('未找到当前周期。请先购买训练计划。');
-        setIsProcessing(false);
-        navigate('/');
-        return;
-      }
-
-      const currentCycle = cycles[cycleIndex];
-
-      // 检查周期状态和训练计划权限
-      if (currentCycle.status !== 'active') {
-        alert('当前训练周期已结束。请先开启新的训练周期后再购买 AI教练服务。');
-        setIsProcessing(false);
-        navigate('/');
-        return;
-      }
-
-      if (!currentCycle.hasPlan) {
-        alert('你还没有购买训练计划。AI教练需要配合训练计划使用。请先购买"个人专属计划定制"或"完整 AQUARION 体验"。');
-        setIsProcessing(false);
-        navigate('/');
-        return;
-      }
-
-      // 更新当前周期，添加AI教练权限
-      cycles[cycleIndex].hasAICoach = true;
-      cycles[cycleIndex].aiCoachPaidAt = new Date().toISOString();
-      localStorage.setItem('paidCycles', JSON.stringify(cycles));
+      addAICoachToCurrentCycle(PRICE_AI_COACH);
 
       setIsProcessing(false);
       alert('支付成功！AI教练已启动。');

@@ -13,11 +13,16 @@ import { Input } from '../components/ui/input';
 import { motion } from 'motion/react';
 import { useState } from 'react';
 import { validateInviteCode, markCodeAsUsed } from '../utils/inviteCode';
+import {
+  addAICoachToCurrentCycle,
+  createPaidCycle,
+  getPaidCycles,
+  savePaidCycles,
+} from '../utils/paymentAccess';
 
 const PRICE_PLAN = 30; // 训练计划：30元/6周
 const PRICE_AI_COACH = 150; // AI教练：150元/6周
 const PRICE_BUNDLE = 180; // 完整体验：180元/6周
-const WEEKS_PER_CYCLE = 6; // 每个周期6周
 
 export default function Home() {
   const navigate = useNavigate();
@@ -37,41 +42,32 @@ export default function Home() {
       return;
     }
 
-    // 验证成功，生成新的周期
-    const cycleId = `cycle_${Date.now()}`;
     const prices = {
       plan: PRICE_PLAN,
       ai: PRICE_AI_COACH,
       bundle: PRICE_BUNDLE,
     };
+    const purchaseType = validation.type!;
 
-    const newCycle = {
-      id: cycleId,
-      status: 'active',
-      price: prices[validation.type!],
-      weeks: WEEKS_PER_CYCLE,
-      startedAt: new Date().toISOString(),
-      paidAt: new Date().toISOString(),
-      inviteCode: code,
-      hasPlan: validation.type === 'plan' || validation.type === 'bundle',
-      hasAICoach: validation.type === 'ai' || validation.type === 'bundle',
-    };
-
-    // 保存付费记录
-    const existingCycles = JSON.parse(localStorage.getItem('paidCycles') || '[]');
-    existingCycles.push(newCycle);
-    localStorage.setItem('paidCycles', JSON.stringify(existingCycles));
-    localStorage.setItem('currentCycleId', cycleId);
+    if (purchaseType === 'ai') {
+      addAICoachToCurrentCycle(prices.ai, code);
+    } else {
+      const newCycle = createPaidCycle(purchaseType, prices[purchaseType], code);
+      const existingCycles = getPaidCycles();
+      existingCycles.push(newCycle);
+      savePaidCycles(existingCycles);
+      localStorage.setItem('currentCycleId', newCycle.id);
+    }
 
     // 标记邀请码为已使用
     markCodeAsUsed(code);
 
     setShowPricingDialog(false);
 
-    if (validation.type === 'plan' || validation.type === 'bundle') {
+    if (purchaseType === 'plan' || purchaseType === 'bundle') {
       alert('邀请码验证成功！现在开始填写能力评估。');
       navigate('/assessment');
-    } else if (validation.type === 'ai') {
+    } else if (purchaseType === 'ai') {
       alert('邀请码验证成功！AI教练已启动，你可以在导航栏点击"AI教练"开始咨询。');
       navigate('/ai-coach');
     }
