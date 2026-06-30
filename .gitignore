@@ -38,6 +38,7 @@ Thumbs.db
 # Supabase client config and Edge Functions
 !src/utils/supabase/
 !supabase/functions/
+supabase/.temp/
 
 # 临时文件
 *.tar.gz
