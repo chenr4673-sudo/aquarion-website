@@ -6,6 +6,8 @@ import { Input } from '../components/ui/input';
 import { RadioGroup, RadioGroupItem } from '../components/ui/radio-group';
 import { AlertCircle, ChevronRight, Dumbbell } from 'lucide-react';
 import { motion } from 'motion/react';
+import { useAuth } from '../context/AuthContext';
+import { projectId } from '../../utils/supabase/info';
 
 // 动作数据类型定义
 interface ExerciseData {
@@ -25,8 +27,16 @@ interface AssessmentData {
   exercises: ExerciseData;
 }
 
+interface AssessmentUsage {
+  count: number;
+  max: number;
+  remaining: number;
+  cycleId?: string;
+}
+
 export default function Assessment() {
   const navigate = useNavigate();
+  const { session } = useAuth();
 
   const [data, setData] = useState<AssessmentData>({
     bodyWeight: '',
@@ -38,6 +48,8 @@ export default function Assessment() {
 
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
   const [errors, setErrors] = useState<string[]>([]);
+  const [usage, setUsage] = useState<AssessmentUsage | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // 检查付费状态 - 必须购买训练计划
   useEffect(() => {
@@ -66,6 +78,19 @@ export default function Assessment() {
       navigate('/');
     }
   }, [navigate]);
+
+  useEffect(() => {
+    if (!session) return;
+
+    fetch(`https://${projectId}.supabase.co/functions/v1/make-server-d7eafa70/assessment/usage`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    })
+      .then(async (res) => {
+        const body = await res.json().catch(() => null);
+        if (res.ok && body) setUsage(body);
+      })
+      .catch((error) => console.error('assessment usage error:', error));
+  }, [session]);
 
   // 处理输入变化
   const handleInputChange = (field: string, value: string) => {
@@ -126,8 +151,54 @@ export default function Assessment() {
 
   // 提交评估
   const handleSubmit = async () => {
-    if (!validateStep3()) return;
-    
+    if (!validateStep3() || isSubmitting) return;
+
+    if (!session) {
+      setErrors(['请先登录账号，再生成训练计划。']);
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const res = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-d7eafa70/assessment/consume`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        }
+      );
+      const body = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        if (body.count !== undefined && body.max !== undefined) {
+          setUsage({
+            count: Number(body.count),
+            max: Number(body.max),
+            remaining: Number(body.remaining || 0),
+            cycleId: body.cycleId,
+          });
+        }
+        setErrors([body.message || body.error || '当前无法生成训练计划，请稍后再试。']);
+        return;
+      }
+
+      setUsage({
+        count: Number(body.count),
+        max: Number(body.max),
+        remaining: Number(body.remaining || 0),
+        cycleId: body.cycleId,
+      });
+    } catch (error) {
+      setErrors([`网络错误：${error}`]);
+      return;
+    } finally {
+      setIsSubmitting(false);
+    }
+
     // 保存评估数据到 localStorage
     localStorage.setItem('assessmentData', JSON.stringify(data));
     
@@ -149,6 +220,19 @@ export default function Assessment() {
           <p className="text-[rgb(var(--muted-foreground))] text-lg">
             请如实填写以下数据，AI 将根据你的实际情况生成专属训练计划
           </p>
+          {usage && (
+            <div
+              className="mt-6 inline-flex items-center justify-center border px-5 py-3 text-sm"
+              style={{
+                borderColor: usage.remaining > 0 ? 'rgb(var(--border))' : 'rgb(var(--power-red))',
+                color: usage.remaining > 0 ? 'rgb(var(--muted-foreground))' : 'rgb(var(--power-red))',
+                background: usage.remaining > 0 ? 'rgba(255,255,255,0.02)' : 'rgba(160,8,12,0.08)',
+              }}
+            >
+              当前周期能力评估：已使用 {usage.count} / {usage.max} 次
+              {usage.remaining > 0 ? ` · 剩余 ${usage.remaining} 次` : ' · 本周期已用完'}
+            </div>
+          )}
         </div>
 
         {/* Progress Steps */}
@@ -340,9 +424,10 @@ export default function Assessment() {
               </Button>
               <Button
                 onClick={handleSubmit}
+                disabled={isSubmitting || usage?.remaining === 0}
                 className="bg-[rgb(var(--power-red))] hover:bg-[rgb(var(--primary-hover))] px-8 py-6 text-lg"
               >
-                生成训练计划
+                {isSubmitting ? '正在生成...' : usage?.remaining === 0 ? '评估次数已用完' : '生成训练计划'}
                 <ChevronRight className="ml-2 w-5 h-5" />
               </Button>
             </div>

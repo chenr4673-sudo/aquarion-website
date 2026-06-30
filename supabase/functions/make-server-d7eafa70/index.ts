@@ -45,6 +45,7 @@ const PRODUCTS: Record<string, { label: string; amount: number; type: 'plan' | '
 };
 
 type ProductType = 'plan' | 'ai' | 'bundle';
+const ASSESSMENT_LIMIT_PER_CYCLE = 2;
 
 function cycleIncludesProduct(cycle: any, productType: ProductType) {
   if (!cycle) return false;
@@ -68,6 +69,20 @@ async function getActiveCycle(userId: string): Promise<{ cycleIds: string[]; act
   )) || null;
 
   return { cycleIds, active };
+}
+
+function assessmentUsageKey(userId: string, cycleId: string) {
+  return `assessment_usage:${userId}:${cycleId}`;
+}
+
+async function getAssessmentUsage(userId: string, cycleId: string) {
+  const stored = await kv.get(assessmentUsageKey(userId, cycleId));
+  const count = Number((stored as any)?.count || 0);
+  return {
+    count,
+    max: ASSESSMENT_LIMIT_PER_CYCLE,
+    remaining: Math.max(ASSESSMENT_LIMIT_PER_CYCLE - count, 0),
+  };
 }
 
 async function activatePaidProduct(params: {
@@ -138,7 +153,7 @@ async function activatePaidProduct(params: {
 }
 
 // ── Health ────────────────────────────────────────────────────────────────────
-app.get("/make-server-d7eafa70/health", (c) => c.json({ status: "ok", version: "paid-upgrade-fix" }));
+app.get("/make-server-d7eafa70/health", (c) => c.json({ status: "ok", version: "assessment-limit-fix" }));
 
 // ── Auth: Register ────────────────────────────────────────────────────────────
 app.post("/make-server-d7eafa70/auth/register", async (c) => {
@@ -218,6 +233,68 @@ app.post("/make-server-d7eafa70/user/activate-code", async (c) => {
     });
     return c.json({ success: true, cycle });
   } catch (e) { return c.json({ error: `激活失败：${e}` }, 500); }
+});
+
+// ── Assessment limit: max 2 plan generations per active cycle ─────────────────
+app.get("/make-server-d7eafa70/assessment/usage", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    if (!user) return c.json({ error: "未授权" }, 401);
+
+    const { active } = await getActiveCycle(user.userId);
+    if (!active || active.hasPlan !== true) {
+      return c.json({ error: "当前没有有效的训练计划周期" }, 403);
+    }
+
+    const usage = await getAssessmentUsage(user.userId, active.id);
+    return c.json({ ...usage, cycleId: active.id });
+  } catch (e) {
+    return c.json({ error: `获取评估次数失败：${e}` }, 500);
+  }
+});
+
+app.post("/make-server-d7eafa70/assessment/consume", async (c) => {
+  try {
+    const user = await requireAuth(c);
+    if (!user) return c.json({ error: "未授权" }, 401);
+
+    const { active } = await getActiveCycle(user.userId);
+    if (!active || active.hasPlan !== true) {
+      return c.json({ error: "当前没有有效的训练计划周期" }, 403);
+    }
+
+    const usage = await getAssessmentUsage(user.userId, active.id);
+    if (usage.remaining <= 0) {
+      return c.json({
+        error: "assessment_limit_reached",
+        message: "当前 6 周周期内最多只能完成 2 次能力评估并生成训练计划。本周期评估次数已用完。",
+        ...usage,
+        cycleId: active.id,
+      }, 429);
+    }
+
+    const now = new Date().toISOString();
+    const existing = await kv.get(assessmentUsageKey(user.userId, active.id));
+    const updated = {
+      count: usage.count + 1,
+      max: ASSESSMENT_LIMIT_PER_CYCLE,
+      userId: user.userId,
+      cycleId: active.id,
+      updatedAt: now,
+      createdAt: (existing as any)?.createdAt || now,
+    };
+    await kv.set(assessmentUsageKey(user.userId, active.id), updated);
+
+    return c.json({
+      success: true,
+      count: updated.count,
+      max: ASSESSMENT_LIMIT_PER_CYCLE,
+      remaining: Math.max(ASSESSMENT_LIMIT_PER_CYCLE - updated.count, 0),
+      cycleId: active.id,
+    });
+  } catch (e) {
+    return c.json({ error: `记录评估次数失败：${e}` }, 500);
+  }
 });
 
 // ── Stripe: Create checkout session ──────────────────────────────────────────
