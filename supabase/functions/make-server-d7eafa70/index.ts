@@ -138,7 +138,7 @@ async function activatePaidProduct(params: {
 }
 
 // ── Health ────────────────────────────────────────────────────────────────────
-app.get("/make-server-d7eafa70/health", (c) => c.json({ status: "ok" }));
+app.get("/make-server-d7eafa70/health", (c) => c.json({ status: "ok", version: "paid-upgrade-fix" }));
 
 // ── Auth: Register ────────────────────────────────────────────────────────────
 app.post("/make-server-d7eafa70/auth/register", async (c) => {
