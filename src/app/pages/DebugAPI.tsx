@@ -98,7 +98,7 @@ export function DebugAPI() {
       <div className="max-w-4xl mx-auto">
         <h1 className="text-4xl mb-8">API 调试工具</h1>
 
-        <div className="bg-[rgb(var(--card))] border border-[rgb(var(--border))] p-6 mb-6">
+        <div className="bg-card border border-border p-6 mb-6">
           <h2 className="text-2xl mb-4">配置信息</h2>
           <div className="space-y-2 text-sm font-mono">
             <div>Project ID: {projectId}</div>
@@ -107,14 +107,14 @@ export function DebugAPI() {
           </div>
         </div>
 
-        <div className="bg-[rgb(var(--card))] border border-[rgb(var(--border))] p-6 mb-6">
+        <div className="bg-card border border-border p-6 mb-6">
           <h2 className="text-2xl mb-4">测试 API</h2>
           
           <div className="space-y-4">
             <button
               onClick={testHealthCheck}
               disabled={loading}
-              className="w-full py-3 bg-[rgb(var(--primary))] text-[rgb(var(--primary-foreground))] hover:bg-[rgb(var(--primary))]/90 transition-all disabled:opacity-50"
+              className="w-full py-3 bg-primary text-primary-foreground hover:bg-primary/90 transition-all disabled:opacity-50"
             >
               {loading ? "测试中..." : "测试健康检查 (/health)"}
             </button>
@@ -122,7 +122,7 @@ export function DebugAPI() {
             <button
               onClick={testTrainingPlanAPI}
               disabled={loading}
-              className="w-full py-3 bg-[rgb(var(--accent))] text-[rgb(var(--background))] hover:bg-[rgb(var(--accent))]/90 transition-all disabled:opacity-50"
+              className="w-full py-3 bg-accent text-background hover:bg-accent/90 transition-all disabled:opacity-50"
             >
               {loading ? "生成中..." : "测试训练计划生成 (/generate-training-plan)"}
             </button>
@@ -130,22 +130,22 @@ export function DebugAPI() {
         </div>
 
         {error && (
-          <div className="bg-[rgb(var(--destructive))]/10 border border-destructive/20 p-6 mb-6">
-            <h3 className="text-xl text-[rgb(var(--destructive))] mb-2">错误</h3>
+          <div className="bg-destructive/10 border border-destructive/20 p-6 mb-6">
+            <h3 className="text-xl text-destructive mb-2">错误</h3>
             <pre className="text-sm overflow-auto whitespace-pre-wrap">{error}</pre>
           </div>
         )}
 
         {response && (
-          <div className="bg-[rgb(var(--card))] border border-[rgb(var(--border))] p-6">
+          <div className="bg-card border border-border p-6">
             <h3 className="text-xl mb-4">响应结果</h3>
             <div className="mb-4">
-              <span className="text-sm text-[rgb(var(--muted-foreground))]">HTTP 状态: </span>
-              <span className={`font-medium ${response.status === 200 ? 'text-chart-4' : 'text-[rgb(var(--accent))]'}`}>
+              <span className="text-sm text-muted-foreground">HTTP 状态: </span>
+              <span className={`font-medium ${response.status === 200 ? 'text-chart-4' : 'text-accent'}`}>
                 {response.status}
               </span>
             </div>
-            <pre className="text-sm bg-[rgb(var(--secondary))] p-4 overflow-auto whitespace-pre-wrap max-h-96">
+            <pre className="text-sm bg-secondary p-4 overflow-auto whitespace-pre-wrap max-h-96">
               {JSON.stringify(response.data, null, 2)}
             </pre>
           </div>

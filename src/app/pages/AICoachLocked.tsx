@@ -1,37 +1,62 @@
-import { MessageCircle, Lock, Check, Sparkles } from 'lucide-react';
+import { MessageCircle, Lock, Check, Sparkles, Loader2 } from 'lucide-react';
 import { Button } from '../components/ui/button';
+import { useNavigate } from 'react-router';
 import { useState } from 'react';
-import { addAICoachToCurrentCycle, findCurrentCycle, getPaidCycles, hasAICoachAccess } from '../utils/paymentAccess';
+import { useAuth } from '../context/AuthContext';
+import { projectId } from '../../utils/supabase/info';
 
 const PRICE_AI_COACH = 99;
+const CURRENCY = 'A$';
 
 export default function AICoachLocked() {
+  const navigate = useNavigate();
+  const { user, session } = useAuth();
   const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState('');
 
-  const handlePurchase = () => {
+  const handlePurchase = async () => {
+    if (!user || !session) {
+      navigate('/');
+      return;
+    }
     setIsProcessing(true);
-
-    // 模拟付费流程
-    setTimeout(() => {
-      const { cycle } = findCurrentCycle(getPaidCycles());
-
-      if (hasAICoachAccess(cycle)) {
-        alert('你已经拥有当前周期的 AI教练服务。');
-        setIsProcessing(false);
-        window.location.reload();
+    setError('');
+    try {
+      const res = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-d7eafa70/payment/create-checkout`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            productType: 'ai',
+            successUrl: `${window.location.origin}/payment-success`,
+            cancelUrl: `${window.location.origin}/ai-coach`,
+          }),
+        }
+      );
+      const data = await res.json();
+      if (res.status === 409 && data.error === 'already_active') {
+        alert(data.message);
+        navigate('/my-plan');
         return;
       }
-
-      addAICoachToCurrentCycle(PRICE_AI_COACH);
-
+      if (!res.ok) {
+        setError(data.error || '创建支付会话失败');
+        return;
+      }
+      if (data.url) window.location.href = data.url;
+    } catch (e) {
+      setError(`网络错误：${e}`);
+    } finally {
       setIsProcessing(false);
-      alert('支付成功！AI教练已启动。');
-      window.location.reload(); // 重新加载页面以显示聊天界面
-    }, 1500);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-[rgb(var(--background))] text-[rgb(var(--foreground))]">
+    <div className="min-h-screen bg-black text-[rgb(var(--foreground))]">
       <div className="container mx-auto px-4 py-20">
         <div className="max-w-3xl mx-auto text-center">
           {/* 锁定图标 */}
@@ -62,7 +87,7 @@ export default function AICoachLocked() {
             </div>
 
             <p className="text-[rgb(var(--muted-foreground))] mb-6 leading-relaxed">
-              私人专属 AI 教练为独立付费功能。支付 <strong className="text-[rgb(var(--power-orange))]">¥{PRICE_AI_COACH}</strong> 后，
+              私人专属 AI 教练为独立付费功能。支付 <strong className="text-[rgb(var(--power-orange))]">{CURRENCY}{PRICE_AI_COACH}</strong> 后，
               可在当前6周周期内向 AQUARION AI Coach 提问，获得腕力训练、技术、饮食、恢复和比赛准备建议。
               AI教练仅提供建议，不会修改你的训练计划。
             </p>
@@ -121,12 +146,17 @@ export default function AICoachLocked() {
             <div className="text-5xl font-black text-[rgb(var(--power-orange))] mb-2">¥{PRICE_AI_COACH}</div>
             <div className="text-[rgb(var(--muted-foreground))] mb-6">一周期 = 6周</div>
 
+            {error && (
+              <p className="text-red-400 text-sm mb-4">{error}</p>
+            )}
             <Button
               onClick={handlePurchase}
               disabled={isProcessing}
               className="bg-[rgb(var(--power-orange))] hover:bg-[rgb(var(--power-orange))]/90 text-white text-lg px-10 py-6 font-bold uppercase tracking-wide transition-all duration-300 hover:scale-105 disabled:opacity-50"
             >
-              {isProcessing ? '处理中...' : `支付 ¥${PRICE_AI_COACH} 启动 AI 教练`}
+              {isProcessing
+                ? <><Loader2 className="w-5 h-5 animate-spin mr-2" />跳转支付中…</>
+                : `立即购买 ${CURRENCY}${PRICE_AI_COACH} · 启动 AI 教练`}
             </Button>
           </div>
 

@@ -6,6 +6,8 @@ import TechAnalysis from "./pages/TechAnalysis";
 import TrainingPlan from "./pages/TrainingPlan";
 import AICoach from "./pages/AICoach";
 import AdminInviteCodes from "./pages/AdminInviteCodes";
+import MyPlan from "./pages/MyPlan";
+import PaymentSuccess from "./pages/PaymentSuccess";
 import { NotFound } from "./pages/NotFound";
 
 export const router = createBrowserRouter([
@@ -18,10 +20,11 @@ export const router = createBrowserRouter([
       { path: "tech-analysis", Component: TechAnalysis },
       { path: "training-plan", Component: TrainingPlan },
       { path: "ai-coach", Component: AICoach },
+      { path: "my-plan", Component: MyPlan },
+      { path: "payment-success", Component: PaymentSuccess },
       { path: "*", Component: NotFound },
     ],
   },
-  // 管理员页面 - 独立路由，无导航栏
   {
     path: "/admin/invite-codes",
     Component: AdminInviteCodes,

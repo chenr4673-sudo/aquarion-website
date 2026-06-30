@@ -1,6 +1,5 @@
-import { Link, useNavigate } from 'react-router';
-import { Dumbbell, Brain, TrendingUp, Zap, Check, Lock, RefreshCw, MessageCircle } from 'lucide-react';
-import { Button } from '../components/ui/button';
+import { useNavigate } from 'react-router';
+import { Brain, TrendingUp, Zap, Check, Lock, RefreshCw, MessageCircle, ShieldCheck, CreditCard, Loader2 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -9,385 +8,361 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '../components/ui/dialog';
-import { Input } from '../components/ui/input';
 import { motion } from 'motion/react';
 import { useState } from 'react';
-import { validateInviteCode, markCodeAsUsed } from '../utils/inviteCode';
-import {
-  addAICoachToCurrentCycle,
-  createPaidCycle,
-  getPaidCycles,
-  savePaidCycles,
-} from '../utils/paymentAccess';
+import { useAuth } from '../context/AuthContext';
+import { AuthModal } from '../components/AuthModal';
+import { projectId } from '../../utils/supabase/info';
+import { useLanguage } from '../context/LanguageContext';
 
-const PRICE_PLAN = 30; // 训练计划：30元/6周
-const PRICE_AI_COACH = 150; // AI教练：150元/6周
-const PRICE_BUNDLE = 180; // 完整体验：180元/6周
+const PRICE_PLAN = 20;
+const PRICE_AI_COACH = 99;
+const PRICE_BUNDLE = 110;
+const CURRENCY = 'A$';
+
+const cinzelStyle = { fontFamily: 'Cinzel, Georgia, serif' };
+const garamondStyle = { fontFamily: 'EB Garamond, Georgia, serif' };
+
+// Origin for Stripe redirect URLs
+const SITE_ORIGIN = window.location.origin;
 
 export default function Home() {
   const navigate = useNavigate();
+  const { user, session, activeCycle, remainingDays } = useAuth();
+  const { t, lang } = useLanguage();
   const [showPricingDialog, setShowPricingDialog] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authTab, setAuthTab] = useState<'login' | 'register'>('login');
+  const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
+  const [checkoutError, setCheckoutError] = useState('');
 
-  // 处理邀请码兑换 - 支持三种类型：plan, ai, bundle
-  const handleInviteCodeSubmit = (code: string, expectedType: 'plan' | 'ai' | 'bundle') => {
-    const validation = validateInviteCode(code);
+  const alreadyOwns = (productType: 'plan' | 'ai' | 'bundle') => {
+    if (!activeCycle || activeCycle.status !== 'active' || new Date(activeCycle.endsAt).getTime() <= Date.now()) {
+      return false;
+    }
+    const ownsPlan = activeCycle.hasPlan === true;
+    const ownsAi = activeCycle.hasAICoach === true;
+    if (productType === 'plan') return ownsPlan;
+    if (productType === 'ai') return ownsAi;
+    return ownsPlan && ownsAi;
+  };
 
-    if (!validation.valid) {
-      alert(validation.message);
+  // Open pricing — requires login, but users with one product can add the other.
+  const handleOpenPricing = () => {
+    if (!user) {
+      setAuthTab('login');
+      setAuthModalOpen(true);
+      return;
+    }
+    setShowPricingDialog(true);
+  };
+
+  const handleCheckout = async (productType: 'plan' | 'ai' | 'bundle') => {
+    if (!user || !session) {
+      setAuthTab('login');
+      setAuthModalOpen(true);
       return;
     }
 
-    if (validation.type !== expectedType && validation.type !== 'bundle') {
-      alert(`此邀请码类型不匹配。需要 ${expectedType === 'plan' ? '训练计划' : expectedType === 'ai' ? 'AI教练' : '完整体验'} 类型的邀请码。`);
+    if (alreadyOwns(productType)) {
+      alert(lang === 'en' ? 'You already own this product for the current cycle.' : '你已经拥有当前周期的这个功能。');
       return;
     }
 
-    const prices = {
-      plan: PRICE_PLAN,
-      ai: PRICE_AI_COACH,
-      bundle: PRICE_BUNDLE,
-    };
-    const purchaseType = validation.type!;
+    setCheckoutLoading(productType);
+    setCheckoutError('');
 
-    if (purchaseType === 'ai') {
-      addAICoachToCurrentCycle(prices.ai, code);
-    } else {
-      const newCycle = createPaidCycle(purchaseType, prices[purchaseType], code);
-      const existingCycles = getPaidCycles();
-      existingCycles.push(newCycle);
-      savePaidCycles(existingCycles);
-      localStorage.setItem('currentCycleId', newCycle.id);
-    }
-
-    // 标记邀请码为已使用
-    markCodeAsUsed(code);
-
-    setShowPricingDialog(false);
-
-    if (purchaseType === 'plan' || purchaseType === 'bundle') {
-      alert('邀请码验证成功！现在开始填写能力评估。');
-      navigate('/assessment');
-    } else if (purchaseType === 'ai') {
-      alert('邀请码验证成功！AI教练已启动，你可以在导航栏点击"AI教练"开始咨询。');
-      navigate('/ai-coach');
+    try {
+      const res = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-d7eafa70/payment/create-checkout`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            productType,
+            successUrl: `${SITE_ORIGIN}/payment-success`,
+            cancelUrl: SITE_ORIGIN,
+          }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setCheckoutError(data.message || data.error || '创建支付会话失败');
+        return;
+      }
+      if (data.url) window.location.href = data.url;
+    } catch (error) {
+      setCheckoutError(`网络错误：${error}`);
+    } finally {
+      setCheckoutLoading(null);
     }
   };
-  return (
-    <div className="min-h-screen bg-[rgb(var(--background))] text-[rgb(var(--foreground))]">
-      {/* Hero Section */}
-      <div className="relative min-h-screen flex items-center justify-center overflow-hidden">
-        {/* Background Grid */}
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute inset-0" style={{
-            backgroundImage: 'linear-gradient(rgb(var(--power-red)) 1px, transparent 1px), linear-gradient(90deg, rgb(var(--power-red)) 1px, transparent 1px)',
-            backgroundSize: '50px 50px'
-          }} />
-        </div>
-        
-        {/* Content */}
-        <div className="relative z-10 container mx-auto px-4 py-20">
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            className="text-center max-w-4xl mx-auto"
-          >
-            {/* Logo/Title */}
-            <div className="flex items-center justify-center gap-4 mb-8">
-              <Dumbbell className="w-16 h-16 text-[rgb(var(--power-red))]" strokeWidth={2} />
-              <h1 className="text-5xl md:text-7xl font-black uppercase tracking-wider">
-                <span className="text-[rgb(var(--power-red))]">AQUARION</span>
-              </h1>
-            </div>
-            
-            <h2 className="text-2xl md:text-3xl font-bold text-[rgb(var(--power-silver))] mb-6 uppercase tracking-wide">
-              AQUARION AI 手臂摔跤训练系统
-            </h2>
 
-            <p className="text-lg md:text-xl text-[rgb(var(--muted-foreground))] mb-8 max-w-2xl mx-auto leading-relaxed">
-              通过身体结构、力量数据和AI分析，
-              <br />
-              为每个腕力爱好者生成专属训练周期
+  return (
+    <div className="min-h-screen bg-black text-[rgb(var(--foreground))]">
+
+      {/* ── Hero ── */}
+      <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
+        <div className="absolute inset-0 hero-glow pointer-events-none" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-px h-48 pointer-events-none"
+          style={{ background: 'linear-gradient(to bottom, rgb(var(--power-red) / 0.6), transparent)' }} />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 rounded-full pointer-events-none"
+          style={{ background: 'radial-gradient(circle, rgb(var(--power-red) / 0.15) 0%, transparent 70%)', transform: 'translate(-50%, -40%)' }} />
+
+        <div className="relative z-10 container mx-auto px-6 py-24 text-center">
+          <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 1, ease: 'easeOut' }}>
+
+            <h1 className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold tracking-[0.2em] uppercase mb-4 text-glow-red"
+              style={cinzelStyle}>
+              AQUARION
+            </h1>
+
+            <div className="ornament-line justify-center text-sm tracking-[0.4em] uppercase text-[rgb(var(--muted-foreground))] mb-12"
+              style={cinzelStyle}>
+              This Summer
+            </div>
+
+            <p className="text-base md:text-lg text-[rgb(var(--muted-foreground))] max-w-xl mx-auto leading-loose mb-4"
+              style={{ ...garamondStyle, fontSize: '1.1rem' }}>
+              通过身体结构、力量数据与 AI 分析，<br />
+              为每位腕力爱好者生成专属训练周期
             </p>
 
-            {/* 价格展示 */}
-            <div className="mb-8 space-y-2">
-              <div className="text-center">
-                <span className="text-[rgb(var(--muted-foreground))]">个人专属计划定制：</span>
-                <span className="text-2xl font-bold text-[rgb(var(--power-red))] ml-2">¥{PRICE_PLAN} / 6周</span>
-              </div>
-              <div className="text-center">
-                <span className="text-[rgb(var(--muted-foreground))]">私人专属 AI 教练：</span>
-                <span className="text-2xl font-bold text-[rgb(var(--power-orange))] ml-2">¥{PRICE_AI_COACH} / 6周</span>
-              </div>
-              <div className="text-center">
-                <span className="text-[rgb(var(--muted-foreground))]">完整体验：</span>
-                <span className="text-3xl font-black text-[rgb(var(--power-gold))] ml-2">¥{PRICE_BUNDLE} / 6周</span>
+            {/* Pricing summary */}
+            <div className="flex flex-col items-center gap-2 mb-10 mt-8">
+              <PriceLine label="个人专属计划定制" price={PRICE_PLAN} />
+              <PriceLine label="私人专属 AI 教练" price={PRICE_AI_COACH} />
+              <div className="mt-1 text-[rgb(var(--power-gold))] tracking-[0.2em]" style={cinzelStyle}>
+                <span className="text-xs uppercase">完整体验</span>
+                <span className="text-3xl font-bold ml-3">{CURRENCY}{PRICE_BUNDLE}</span>
+                <span className="text-xs ml-1">/ 6周</span>
               </div>
             </div>
 
-            {/* CTA Button */}
+            {/* Active cycle banner */}
+            {user && activeCycle && new Date(activeCycle.endsAt).getTime() > Date.now() && (
+              <div className="mb-6 inline-flex items-center gap-3 px-6 py-3 border border-[rgb(var(--power-red))]/30"
+                style={{ background: 'rgba(160,8,12,0.06)' }}>
+                <ShieldCheck className="w-4 h-4 text-[rgb(var(--power-red))]" />
+                <span style={{ ...cinzelStyle, fontSize: '0.7rem', letterSpacing: '0.15em' }}>
+                  训练周期进行中 · 剩余 {remainingDays} 天
+                </span>
+                <button onClick={() => navigate('/my-plan')}
+                  className="text-[rgb(var(--power-red))] underline underline-offset-2"
+                  style={{ ...cinzelStyle, fontSize: '0.65rem', background: 'none', border: 'none', cursor: 'pointer' }}>
+                  查看详情
+                </button>
+              </div>
+            )}
+
+            {/* Payment methods badge */}
+            <div className="flex items-center justify-center gap-3 mb-6">
+              <span style={{ fontSize: '0.6rem', letterSpacing: '0.15em', color: 'rgb(var(--muted-foreground))', ...cinzelStyle }}>支持</span>
+              <span className="text-xs px-2 py-0.5 border border-[rgb(var(--border))] text-[rgb(var(--muted-foreground))]" style={cinzelStyle}>💳 信用卡</span>
+              <span className="text-xs px-2 py-0.5 border border-[rgb(var(--border))] text-[rgb(var(--muted-foreground))]" style={cinzelStyle}>💚 微信支付</span>
+              <span className="text-xs px-2 py-0.5 border border-[rgb(var(--border))] text-[rgb(var(--muted-foreground))]" style={cinzelStyle}>🔵 支付宝</span>
+            </div>
+
+            {/* CTA */}
             <Dialog open={showPricingDialog} onOpenChange={setShowPricingDialog}>
               <DialogTrigger asChild>
-                <Button
-                  size="lg"
-                  className="bg-[rgb(var(--power-red))] hover:bg-[rgb(var(--primary-hover))] text-white text-xl px-12 py-7 font-bold uppercase tracking-wide transition-all duration-300 hover:scale-105"
+                <button
+                  onClick={e => { e.preventDefault(); handleOpenPricing(); }}
+                  className="inline-flex items-center gap-3 px-12 py-4 border border-[rgb(var(--power-red))] text-[rgb(var(--foreground))] uppercase tracking-[0.3em] text-sm transition-all duration-500 hover:bg-[rgb(var(--power-red))] hover:text-white group glow-red"
+                  style={cinzelStyle}
                 >
-                  查看付费方案
-                  <Zap className="ml-2 w-6 h-6" />
-                </Button>
+                  {user ? '查看付费方案' : '登录 · 查看付费方案'}
+                  <CreditCard className="w-4 h-4 transition-transform group-hover:scale-110" />
+                </button>
               </DialogTrigger>
-              <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+
+              <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-[rgb(var(--card))] border-[rgb(var(--border))]">
                 <DialogHeader>
-                  <DialogTitle className="text-2xl font-black uppercase">
+                  <DialogTitle className="tracking-[0.2em] uppercase" style={cinzelStyle}>
                     选择你的 AQUARION 训练服务
                   </DialogTitle>
-                  <DialogDescription className="text-base">
-                    所有服务均以 6 周为一个周期。你可以单独购买训练计划，也可以额外启动私人专属 AI 教练。
+                  <DialogDescription className="text-[rgb(var(--muted-foreground))]" style={garamondStyle}>
+                    所有服务均以 6 周为一个周期 · 支持微信支付、支付宝、信用卡
                   </DialogDescription>
                 </DialogHeader>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
-                  {/* 卡片 1：个人专属计划定制 */}
+                {checkoutError && (
+                  <div className="border border-red-600/30 p-3 text-sm text-red-400" style={{ background: 'rgba(160,8,12,0.08)', ...garamondStyle }}>
+                    {checkoutError}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mt-4">
                   <PricingCard
                     title="个人专属计划定制"
                     price={PRICE_PLAN}
-                    cycle="一周期 = 6周"
-                    features={[
-                      '专属能力评估',
-                      '体重、手掌长度、小臂长度分析',
-                      '技术路线建议',
-                      '6周个人训练计划',
-                      '每周自动递进',
-                      '受伤状态调整模式',
-                      '6周结束后强制重新评估',
-                    ]}
+                    features={['专属能力评估', '体重/手掌/小臂分析', '技术路线建议', '6周个人训练计划', '每周自动递进', '受伤状态调整模式']}
                     description="适合想获得完整6周腕力专项训练计划的用户。"
-                    onSubmit={(code) => handleInviteCodeSubmit(code, 'plan')}
-                    inviteType="plan"
-                    themeColor="rgb(var(--power-red))"
+                    onCheckout={() => handleCheckout('plan')}
+                    loading={checkoutLoading === 'plan'}
+                    owned={alreadyOwns('plan')}
                   />
-
-                  {/* 卡片 2：私人专属 AI 教练 */}
                   <PricingCard
-                    title="启动私人专属 AI 教练"
+                    title="私人专属 AI 教练"
                     price={PRICE_AI_COACH}
-                    cycle="一周期 = 6周"
-                    features={[
-                      '私人AI腕力教练聊天',
-                      '腕力知识答疑',
-                      '技术路线分析',
-                      '训练建议',
-                      '饮食与体重管理建议',
-                      '赛前准备建议',
-                      '伤病恢复建议',
-                      '联网搜索资料并自动总结',
-                      '可参考用户当前训练数据',
-                      '不会修改或干扰训练计划',
-                    ]}
-                    description="适合想随时获得腕力训练、技术、饮食、恢复和比赛策略建议的用户。"
-                    onSubmit={(code) => handleInviteCodeSubmit(code, 'ai')}
-                    inviteType="ai"
-                    themeColor="rgb(var(--power-red))"
+                    features={['私人AI腕力教练聊天', '技术/训练/饮食答疑', '赛前准备建议', '伤病恢复建议', '联网搜索并总结', '可参考当前训练数据']}
+                    description="适合想随时获得专业训练、技术、饮食和比赛建议的用户。"
+                    onCheckout={() => handleCheckout('ai')}
+                    loading={checkoutLoading === 'ai'}
+                    owned={alreadyOwns('ai')}
                   />
-
-                  {/* 组合推荐卡片 */}
                   <PricingCard
                     title="完整 AQUARION 体验"
                     subtitle="个人专属计划定制 + 私人专属 AI 教练"
                     price={PRICE_BUNDLE}
-                    cycle="一周期 = 6周"
-                    features={[
-                      `¥${PRICE_PLAN} 个人专属计划定制`,
-                      `¥${PRICE_AI_COACH} 私人专属 AI 教练`,
-                      '解锁完整 AQUARION 6周训练系统',
-                    ]}
+                    features={[`${CURRENCY}${PRICE_PLAN} ${t('home.plan.label')}`, `${CURRENCY}${PRICE_AI_COACH} ${t('home.ai.label')}`, lang === 'en' ? 'Unlock the full 6-week training system' : '解锁完整6周训练系统']}
                     description=""
-                    onSubmit={(code) => handleInviteCodeSubmit(code, 'bundle')}
-                    inviteType="bundle"
-                    themeColor="rgb(var(--power-red))"
+                    onCheckout={() => handleCheckout('bundle')}
+                    loading={checkoutLoading === 'bundle'}
+                    owned={alreadyOwns('bundle')}
                     recommended
                   />
+                </div>
+
+                <div className="mt-4 flex items-center justify-center gap-4 text-xs text-[rgb(var(--muted-foreground))]" style={cinzelStyle}>
+                  <span>💳 Visa / Mastercard</span>
+                  <span>💚 微信支付</span>
+                  <span>🔵 支付宝</span>
+                  <span className="text-[rgb(var(--border))]">·</span>
+                  <span>🔒 由 Stripe 安全加密</span>
                 </div>
               </DialogContent>
             </Dialog>
 
-            <p className="mt-4 text-sm text-[rgb(var(--muted-foreground))]">
-              所有服务均以 6 周为一个周期 · 不会自动续费
+            <p className="mt-5 text-xs tracking-[0.15em] text-[rgb(var(--muted-foreground))]" style={cinzelStyle}>
+              所有服务均以 6 周为一个周期 · 不会自动续费 · 安全支付
             </p>
           </motion.div>
-          
-          {/* Features Grid */}
-          <motion.div 
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.3 }}
-            className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-24 max-w-5xl mx-auto"
-          >
-            <FeatureCard 
-              icon={<Brain className="w-10 h-10" />}
-              title="AI 技术分析"
-              description="根据你的身体硬件数据，AI 智能推荐最适合你的技术路线"
-            />
-            <FeatureCard 
-              icon={<Dumbbell className="w-10 h-10" />}
-              title="科学训练计划"
-              description="严格遵循专业训练理论，内侧力、外侧力、横向力、前端专项全面覆盖"
-            />
-            <FeatureCard 
-              icon={<TrendingUp className="w-10 h-10" />}
-              title="精准进度追踪"
-              description="每个动作独立进度管理，5×5 周期、RM 递增，严格按照训练指南递进"
-            />
+
+          {/* Feature Cards */}
+          <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, delay: 0.5 }}
+            className="grid grid-cols-1 md:grid-cols-3 gap-px mt-24 max-w-5xl mx-auto border border-[rgb(var(--border))]">
+            <FeatureCard icon={<Brain className="w-7 h-7" />} title="AI 技术分析" description="根据你的身体硬件数据，AI 智能推荐最适合你的技术路线" />
+            <FeatureCard icon={<Zap className="w-7 h-7" />} title="科学训练计划" description="严格遵循专业训练理论，内侧力、外侧力、横向力、前端专项全面覆盖" />
+            <FeatureCard icon={<TrendingUp className="w-7 h-7" />} title="精准进度追踪" description="每个动作独立进度管理，5×5 周期、RM 递增，严格按照训练指南递进" />
           </motion.div>
         </div>
-      </div>
-      
-      {/* Training Philosophy Section */}
-      <div className="border-t border-[rgb(var(--border))] py-20">
-        <div className="container mx-auto px-4">
-          <h3 className="text-3xl md:text-4xl font-bold text-center mb-16 uppercase tracking-wide">
-            <span className="text-[rgb(var(--power-red))]">训练</span>
-            <span className="text-[rgb(var(--foreground))]">哲学</span>
-          </h3>
+      </section>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
-            <PhilosophyCard
-              title="内侧力"
-              subtitle="Inner Strength"
-              color="rgb(var(--inner-strength))"
-              description="二头弯举、内侧弯举、正面横扫、器械侧压"
-            />
-            <PhilosophyCard
-              title="外侧力"
-              subtitle="Outer Strength"
-              color="rgb(var(--outer-strength))"
-              description="虎口锤提、拇指旋提、锤式弯举、桡骨旋提"
-            />
-            <PhilosophyCard
-              title="横向力"
-              subtitle="Lateral Strength"
-              color="rgb(var(--lateral-strength))"
-              description="负重引体向上、侧面横扫、哑铃卧推"
-            />
-            <PhilosophyCard
-              title="前端专项"
-              subtitle="Front Control"
-              color="rgb(var(--front-special))"
-              description="屈腕、腕弯举、旋前旋后、指力训练"
-            />
+      {/* ── Training Philosophy ── */}
+      <section className="border-t border-[rgb(var(--border))] py-24">
+        <div className="container mx-auto px-6">
+          <SectionTitle>训练哲学</SectionTitle>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 max-w-6xl mx-auto">
+            <PhilosophyCard title="内侧力" subtitle="Inner Strength" color="rgb(var(--inner-strength))" description="二头弯举、内侧弯举、正面横扫、器械侧压" />
+            <PhilosophyCard title="外侧力" subtitle="Outer Strength" color="rgb(var(--outer-strength))" description="虎口锤提、拇指旋提、锤式弯举、桡骨旋提" />
+            <PhilosophyCard title="横向力" subtitle="Lateral Strength" color="rgb(var(--lateral-strength))" description="负重引体向上、侧面横扫、哑铃卧推" />
+            <PhilosophyCard title="前端专项" subtitle="Front Control" color="rgb(var(--front-special))" description="屈腕、腕弯举、旋前旋后、指力训练" />
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* 使用流程区域 */}
-      <div className="border-t border-[rgb(var(--border))] py-20 bg-[rgb(var(--card))]/30">
-        <div className="container mx-auto px-4">
-          <h3 className="text-3xl md:text-4xl font-bold text-center mb-16 uppercase tracking-wide">
-            <span className="text-[rgb(var(--power-red))]">使用</span>
-            <span className="text-[rgb(var(--foreground))]">流程</span>
-          </h3>
-
+      {/* ── Flow ── */}
+      <section className="border-t border-[rgb(var(--border))] py-24">
+        <div className="container mx-auto px-6">
+          <SectionTitle>使用流程</SectionTitle>
           <div className="max-w-5xl mx-auto">
             <div className="grid grid-cols-1 md:grid-cols-7 gap-4 items-center">
-              <FlowStep number={1} title="选择付费方案" icon={<Zap className="w-6 h-6" />} />
+              <FlowStep number={1} title="注册账号" icon={<Zap className="w-5 h-5" />} />
               <FlowArrow />
-              <FlowStep number={2} title="填写能力评估" icon={<Dumbbell className="w-6 h-6" />} />
+              <FlowStep number={2} title="选择方案支付" icon={<CreditCard className="w-5 h-5" />} />
               <FlowArrow />
-              <FlowStep number={3} title="AI 推荐技术路线" icon={<Brain className="w-6 h-6" />} />
+              <FlowStep number={3} title="填写能力评估" icon={<Brain className="w-5 h-5" />} />
               <FlowArrow />
-              <FlowStep number={4} title="生成 6 周计划" icon={<TrendingUp className="w-6 h-6" />} />
+              <FlowStep number={4} title="生成 6 周计划" icon={<TrendingUp className="w-5 h-5" />} />
             </div>
-
-            <div className="mt-8 flex items-center justify-center">
-              <div className="text-center p-6 border border-[rgb(var(--power-red))] rounded-lg bg-[rgb(var(--card))]">
-                <RefreshCw className="w-8 h-8 text-[rgb(var(--power-red))] mx-auto mb-2" />
-                <p className="text-sm text-[rgb(var(--muted-foreground))]">
+            <div className="mt-10 flex items-center justify-center">
+              <div className="text-center p-6 border border-[rgb(var(--border))] bg-[rgb(var(--card))]">
+                <RefreshCw className="w-6 h-6 text-[rgb(var(--power-red))] mx-auto mb-3" />
+                <p className="text-xs tracking-[0.15em] text-[rgb(var(--muted-foreground))] uppercase" style={cinzelStyle}>
                   第 6 周结束 → 重新评估并开启新周期
                 </p>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* 付费说明区域 */}
-      <div className="border-t border-[rgb(var(--border))] py-20">
-        <div className="container mx-auto px-4 max-w-4xl">
-          <h3 className="text-3xl md:text-4xl font-bold text-center mb-12 uppercase tracking-wide">
-            <span className="text-[rgb(var(--power-red))]">付费</span>
-            <span className="text-[rgb(var(--foreground))]">说明</span>
-          </h3>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-[rgb(var(--card))] border border-[rgb(var(--border))] p-6 rounded-lg">
-              <div className="flex items-start gap-4">
-                <div className="flex-shrink-0 w-12 h-12 bg-[rgb(var(--power-red))] rounded-full flex items-center justify-center">
-                  <span className="text-white font-bold text-sm">¥{PRICE_PLAN}</span>
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-bold text-lg mb-2">个人专属计划定制</h4>
-                  <p className="text-[rgb(var(--muted-foreground))]">
-                    每次支付 ¥{PRICE_PLAN}，解锁一个完整的 6 周训练周期。包含专属评估、技术建议和完整训练计划。
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-[rgb(var(--card))] border border-[rgb(var(--power-red))]/50 p-6 rounded-lg">
-              <div className="flex items-start gap-4">
-                <div className="flex-shrink-0 w-12 h-12 bg-[rgb(var(--power-red))] rounded-full flex items-center justify-center">
-                  <MessageCircle className="w-6 h-6 text-white" />
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-bold text-lg mb-2">私人专属 AI 教练</h4>
-                  <p className="text-[rgb(var(--muted-foreground))]">
-                    每次支付 ¥{PRICE_AI_COACH}，在 6 周周期内随时向AI教练咨询训练、技术、饮食和比赛准备建议。
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-[rgb(var(--card))] border border-[rgb(var(--border))] p-6 rounded-lg">
-              <div className="flex items-start gap-4">
-                <Lock className="w-8 h-8 text-yellow-500 flex-shrink-0 mt-1" />
-                <div className="flex-1">
-                  <h4 className="font-bold text-lg mb-2">6 周后必须重新评估</h4>
-                  <p className="text-[rgb(var(--muted-foreground))]">
-                    训练 6 周后，你的力量数据和身体状态会发生变化。系统要求重新填写能力评估，
-                    以确保新周期的训练计划依然精准适配你的当前水平。AI教练权限也会随周期结束。
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-[rgb(var(--card))] border border-[rgb(var(--border))] p-6 rounded-lg">
-              <div className="flex items-start gap-4">
-                <Check className="w-8 h-8 text-green-500 flex-shrink-0 mt-1" />
-                <div className="flex-1">
-                  <h4 className="font-bold text-lg mb-2">不会自动续费</h4>
-                  <p className="text-[rgb(var(--muted-foreground))]">
-                    我们不会自动扣费。每个周期结束后，你可以自行决定是否继续训练。
-                    如需开启新周期，请重新支付并完成评估。
-                  </p>
-                </div>
-              </div>
-            </div>
+      {/* ── Payment Info ── */}
+      <section className="border-t border-[rgb(var(--border))] py-24">
+        <div className="container mx-auto px-6 max-w-4xl">
+          <SectionTitle>付费说明</SectionTitle>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <PaymentInfoCard icon={<CreditCard className="w-5 h-5 text-[rgb(var(--power-red))]" />} title="安全在线支付"
+              description="通过 Stripe 全球支付平台处理，支持微信支付、支付宝、Visa、Mastercard 等，银行级安全加密。" />
+            <PaymentInfoCard icon={<MessageCircle className="w-5 h-5 text-[rgb(var(--power-red))]" />} title="购买记录云端保存"
+              description="支付完成后，你的训练周期自动绑定到账号，换设备或刷新页面均不会丢失。" />
+            <PaymentInfoCard icon={<Lock className="w-5 h-5 text-[rgb(var(--power-gold))]" />} title="6 周后必须重新评估"
+              description="训练 6 周后，系统要求重新填写能力评估，确保新周期训练计划精准适配你的当前水平。" />
+            <PaymentInfoCard icon={<Check className="w-5 h-5 text-[rgb(var(--power-red))]" />} title="不会自动续费"
+              description="我们不会自动扣费。每个周期结束后，你可以自行决定是否继续训练并开启新周期。" />
           </div>
         </div>
-      </div>
+      </section>
+
+      {/* Auth Modal */}
+      <AuthModal open={authModalOpen} onClose={() => setAuthModalOpen(false)} defaultTab={authTab} />
+    </div>
+  );
+}
+
+// ── Sub-components ─────────────────────────────────────────────────────────────
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-center gap-6 mb-16">
+      <span className="block flex-1 h-px bg-[rgb(var(--border))] max-w-[100px]" />
+      <h2 className="text-sm tracking-[0.35em] uppercase text-[rgb(var(--foreground))]" style={cinzelStyle}>{children}</h2>
+      <span className="block flex-1 h-px bg-[rgb(var(--border))] max-w-[100px]" />
+    </div>
+  );
+}
+
+function PriceLine({ label, price }: { label: string; price: number }) {
+  return (
+    <div className="flex items-center gap-4 text-sm text-[rgb(var(--muted-foreground))]" style={garamondStyle}>
+      <span>{label}</span>
+      <span className="w-12 h-px bg-[rgb(var(--border))]" />
+      <span className="text-[rgb(var(--foreground))] font-medium">{CURRENCY}{price} <span className="text-xs text-[rgb(var(--muted-foreground))]">/ 6周</span></span>
+    </div>
+  );
+}
+
+function FeatureCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
+  return (
+    <div className="bg-[rgb(var(--card))] p-8 group hover:bg-[rgb(var(--muted))/0.3] transition-colors duration-300">
+      <div className="text-[rgb(var(--power-red))] mb-5">{icon}</div>
+      <h4 className="text-xs font-semibold uppercase tracking-[0.2em] mb-3 text-[rgb(var(--foreground))]" style={cinzelStyle}>{title}</h4>
+      <p className="text-sm text-[rgb(var(--muted-foreground))] leading-relaxed" style={garamondStyle}>{description}</p>
+    </div>
+  );
+}
+
+function PhilosophyCard({ title, subtitle, color, description }: { title: string; subtitle: string; color: string; description: string }) {
+  return (
+    <div className="border border-[rgb(var(--border))] p-6 bg-[rgb(var(--card))] transition-colors duration-400">
+      <div className="h-px mb-5 w-full" style={{ backgroundColor: color }} />
+      <h5 className="text-sm font-semibold uppercase tracking-[0.2em] mb-1" style={cinzelStyle}>{title}</h5>
+      <p className="text-[10px] text-[rgb(var(--muted-foreground))] uppercase tracking-[0.2em] mb-4" style={cinzelStyle}>{subtitle}</p>
+      <p className="text-sm text-[rgb(var(--muted-foreground))] leading-relaxed" style={garamondStyle}>{description}</p>
     </div>
   );
 }
 
 function FlowStep({ number, title, icon }: { number: number; title: string; icon: React.ReactNode }) {
   return (
-    <div className="bg-[rgb(var(--card))] border-2 border-[rgb(var(--power-red))] p-4 rounded-lg text-center">
-      <div className="flex items-center justify-center mb-2 text-[rgb(var(--power-red))]">
-        {icon}
-      </div>
-      <div className="text-xs text-[rgb(var(--muted-foreground))] mb-1">步骤 {number}</div>
-      <div className="text-sm font-bold">{title}</div>
+    <div className="border border-[rgb(var(--border))] p-4 text-center bg-[rgb(var(--card))]">
+      <div className="text-[rgb(var(--power-red))] flex justify-center mb-2">{icon}</div>
+      <div className="text-[10px] tracking-[0.2em] text-[rgb(var(--muted-foreground))] mb-1 uppercase" style={cinzelStyle}>{number.toString().padStart(2, '0')}</div>
+      <div className="text-xs font-medium uppercase tracking-[0.1em]" style={cinzelStyle}>{title}</div>
     </div>
   );
 }
@@ -395,134 +370,72 @@ function FlowStep({ number, title, icon }: { number: number; title: string; icon
 function FlowArrow() {
   return (
     <div className="hidden md:flex items-center justify-center">
-      <div className="text-[rgb(var(--power-red))] text-2xl font-bold">→</div>
+      <span className="text-[rgb(var(--power-red))] text-lg">—</span>
     </div>
   );
 }
 
-function FeatureCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
+function PaymentInfoCard({ icon, title, description }: { icon: React.ReactNode; title: string; description: string }) {
   return (
-    <div className="bg-[rgb(var(--card))] border border-[rgb(var(--border))] p-8 hover:border-[rgb(var(--power-red))] transition-all duration-300 group">
-      <div className="text-[rgb(var(--power-red))] mb-4 group-hover:scale-110 transition-transform duration-300">
-        {icon}
+    <div className="border border-[rgb(var(--border))] p-6 bg-[rgb(var(--card))] flex items-start gap-4">
+      <div className="flex-shrink-0 mt-0.5">{icon}</div>
+      <div>
+        <h4 className="text-xs font-semibold uppercase tracking-[0.15em] mb-2" style={cinzelStyle}>{title}</h4>
+        <p className="text-sm text-[rgb(var(--muted-foreground))] leading-relaxed" style={garamondStyle}>{description}</p>
       </div>
-      <h4 className="text-xl font-bold mb-3 uppercase tracking-wide">{title}</h4>
-      <p className="text-[rgb(var(--muted-foreground))] leading-relaxed">{description}</p>
     </div>
   );
 }
 
-function PhilosophyCard({ title, subtitle, color, description }: {
-  title: string;
-  subtitle: string;
-  color: string;
-  description: string;
+function PricingCard({ title, subtitle, price, features, description, onCheckout, loading, recommended = false, owned = false }: {
+  title: string; subtitle?: string; price: number; features: string[]; description: string;
+  onCheckout: () => void; loading: boolean; recommended?: boolean; owned?: boolean;
 }) {
+  const { t, lang } = useLanguage();
   return (
-    <div className="bg-[rgb(var(--card))] border border-[rgb(var(--border))] p-6 hover:scale-105 transition-all duration-300">
-      <div className="h-1 mb-4" style={{ backgroundColor: color }} />
-      <h5 className="text-2xl font-bold mb-1 uppercase">{title}</h5>
-      <p className="text-sm text-[rgb(var(--muted-foreground))] mb-4 uppercase tracking-wider">{subtitle}</p>
-      <p className="text-sm text-[rgb(var(--foreground))]/70 leading-relaxed">{description}</p>
-    </div>
-  );
-}
-
-function PricingCard({
-  title,
-  subtitle,
-  price,
-  cycle,
-  features,
-  description,
-  onSubmit,
-  inviteType,
-  themeColor,
-  recommended = false,
-}: {
-  title: string;
-  subtitle?: string;
-  price: number;
-  cycle: string;
-  features: string[];
-  description: string;
-  onSubmit: (code: string) => void;
-  inviteType: 'plan' | 'ai' | 'bundle';
-  themeColor: string;
-  recommended?: boolean;
-}) {
-  const [inviteCode, setInviteCode] = useState('');
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (inviteCode.trim()) {
-      onSubmit(inviteCode.trim());
-    }
-  };
-
-  return (
-    <div
-      className={`bg-[rgb(var(--card))] border-2 p-6 rounded-lg flex flex-col ${
-        recommended ? 'border-[rgb(var(--power-gold))] shadow-lg shadow-[rgb(var(--power-gold))]/20' : 'border-[rgb(var(--border))]'
-      }`}
-    >
+    <div className={`border p-5 flex flex-col bg-[rgb(var(--card))] ${recommended ? 'border-[rgb(var(--power-gold))]' : 'border-[rgb(var(--border))]'}`}>
       {recommended && (
         <div className="text-center mb-4">
-          <span className="inline-block px-4 py-1 bg-[rgb(var(--power-gold))] text-black text-xs font-bold uppercase tracking-wide rounded-full">
-            推荐
-          </span>
+          <span className="text-[10px] tracking-[0.3em] uppercase text-[rgb(var(--power-gold))]" style={cinzelStyle}>{t('pricing.recommend')}</span>
         </div>
       )}
-
-      <div className="h-1 mb-4" style={{ backgroundColor: themeColor }} />
-
-      <h4 className="text-xl font-bold mb-2 uppercase">{title}</h4>
-      {subtitle && <p className="text-sm text-[rgb(var(--muted-foreground))] mb-4">{subtitle}</p>}
-
+      <div className="h-px mb-4" style={{ backgroundColor: recommended ? 'rgb(var(--power-gold))' : 'rgb(var(--power-red))' }} />
+      <h4 className="text-xs font-semibold uppercase tracking-[0.15em] mb-2" style={cinzelStyle}>{title}</h4>
+      {subtitle && <p className="text-xs text-[rgb(var(--muted-foreground))] mb-4" style={garamondStyle}>{subtitle}</p>}
       <div className="mb-4">
-        <div className="text-4xl font-black" style={{ color: themeColor }}>
-          ¥{price}
-        </div>
-        <div className="text-sm text-[rgb(var(--muted-foreground))]">{cycle}</div>
+        <div className="text-3xl font-bold" style={{ ...cinzelStyle, color: recommended ? 'rgb(var(--power-gold))' : 'rgb(var(--power-red))' }}>{CURRENCY}{price}</div>
+        <div className="text-xs text-[rgb(var(--muted-foreground))] tracking-[0.1em]" style={cinzelStyle}>一周期 = 6周</div>
       </div>
-
-      <ul className="space-y-2 mb-6 flex-1">
-        {features.map((feature, index) => (
-          <li key={index} className="flex items-start gap-2 text-sm">
-            <Check className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: themeColor }} />
-            <span className="text-[rgb(var(--foreground))]">{feature}</span>
+      <ul className="space-y-2 mb-5 flex-1">
+        {features.map((f, i) => (
+          <li key={i} className="flex items-start gap-2 text-sm">
+            <span className="text-[rgb(var(--power-red))] mt-0.5 flex-shrink-0">—</span>
+            <span className="text-[rgb(var(--foreground))/0.85]" style={garamondStyle}>{f}</span>
           </li>
         ))}
       </ul>
-
-      {description && (
-        <p className="text-xs text-[rgb(var(--muted-foreground))] mb-4 italic">{description}</p>
-      )}
-
-      {/* 邀请码输入区域 */}
-      <div className="space-y-3">
-        <div className="bg-yellow-900/20 border border-yellow-600/30 rounded p-3 text-xs text-yellow-200">
-          <p className="font-semibold mb-1">如何获取邀请码？</p>
-          <p>请联系客服购买后获取邀请码</p>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-2">
-          <Input
-            type="text"
-            placeholder="输入邀请码"
-            value={inviteCode}
-            onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
-            className="w-full"
-          />
-          <Button
-            type="submit"
-            className="w-full text-white hover:opacity-90 transition-all whitespace-normal h-auto py-3 leading-tight"
-            style={{ backgroundColor: themeColor }}
-          >
-            验证邀请码并解锁
-          </Button>
-        </form>
-      </div>
+      {description && <p className="text-xs text-[rgb(var(--muted-foreground))] mb-4 italic" style={garamondStyle}>{description}</p>}
+      <button
+        onClick={owned ? undefined : onCheckout}
+        disabled={loading || owned}
+        className="w-full py-3 border text-xs uppercase tracking-[0.2em] transition-all duration-300 hover:text-white flex items-center justify-center gap-2"
+        style={{
+          ...cinzelStyle,
+          borderColor: owned ? 'rgba(100,100,100,0.4)' : recommended ? 'rgb(var(--power-gold))' : 'rgb(var(--power-red))',
+          color: owned ? 'rgb(var(--muted-foreground))' : 'rgb(var(--foreground))',
+          background: owned ? 'rgba(50,50,50,0.2)' : loading ? 'rgba(160,8,12,0.15)' : 'none',
+          cursor: owned || loading ? 'not-allowed' : 'pointer',
+        }}
+        onMouseEnter={e => !loading && !owned && ((e.currentTarget as HTMLButtonElement).style.background = recommended ? 'rgb(var(--power-gold))' : 'rgb(var(--power-red))')}
+        onMouseLeave={e => !loading && !owned && ((e.currentTarget as HTMLButtonElement).style.background = 'none')}
+      >
+        {owned
+          ? <>{lang === 'en' ? '✓ Already owned' : '✓ 已拥有'}</>
+          : loading
+            ? <><Loader2 className="w-4 h-4 animate-spin" />{t('pricing.loading')}</>
+            : <><CreditCard className="w-4 h-4" />{t('pricing.buy')}</>
+        }
+      </button>
     </div>
   );
 }

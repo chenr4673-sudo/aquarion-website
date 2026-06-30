@@ -1,9 +1,9 @@
+import { useLanguage } from '../context/LanguageContext';
 import { useState, useEffect, useRef } from 'react';
-import { MessageCircle, Send, Loader2, AlertTriangle, Dumbbell } from 'lucide-react';
-import { Button } from '../components/ui/button';
+import { MessageCircle, Send, Loader2, AlertTriangle, Zap } from 'lucide-react';
 import AICoachLocked from './AICoachLocked';
 import { projectId, publicAnonKey } from '../../utils/supabase/info';
-import { findCurrentCycle, getPaidCycles, hasAICoachAccess } from '../utils/paymentAccess';
+import { useAuth } from '../context/AuthContext';
 
 interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -11,251 +11,248 @@ interface Message {
   timestamp: number;
 }
 
-const QUICK_QUESTIONS = [
-  '如何提升我的内侧力？',
-  '训练后手腕疼痛怎么办？',
-  '比赛前一周应该如何准备？',
-  '如何安排饮食和营养补充？',
-  '我的技术路线适合我吗？',
-  '如何预防训练损伤？',
-];
+/* ── Palette: Batman / midnight electric-blue ── */
+const C = {
+  bg:         '#03040d',          /* near-black with blue tint */
+  surface:    '#07091a',          /* deep navy card surface */
+  surfaceHi:  '#0c0f26',          /* slightly lighter surface */
+  border:     'rgba(90,70,200,0.25)',
+  borderGlow: 'rgba(120,90,255,0.55)',
+  accent:     '#6b4de0',          /* electric violet */
+  accentBrt:  '#9b7fff',          /* bright violet highlight */
+  accentDim:  'rgba(107,77,224,0.18)',
+  userBubble: 'rgba(75,55,190,0.85)',
+  aiBubble:   '#0d1025',
+  text:       '#d8d4f5',          /* soft lavender white */
+  textMuted:  '#7068a8',
+  glow:       '0 0 24px rgba(107,77,224,0.45)',
+};
+
+const cinzel = { fontFamily: 'Cinzel, Georgia, serif' };
+const garamond = { fontFamily: 'EB Garamond, Georgia, serif' };
+
 
 export default function AICoach() {
-  const [hasAccess, setHasAccess] = useState<boolean>(false);
+  const { t } = useLanguage();
+  const { activeCycle, loading } = useAuth();
+  const QUICK_QUESTIONS = [t("coach.q1"),t("coach.q2"),t("coach.q3"),t("coach.q4"),t("coach.q5"),t("coach.q6")];
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // 调试：检查环境变量
-  useEffect(() => {
-    const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-    console.log('=== AI Coach Debug ===');
-    console.log('API Key exists:', !!apiKey);
-    console.log('API Key length:', apiKey?.length || 0);
-    console.log('API Key starts with sk-:', apiKey?.startsWith('sk-'));
-    console.log('All env vars:', import.meta.env);
-  }, []);
-
-  // 检查AI教练访问权限
-  useEffect(() => {
-    const { cycle } = findCurrentCycle(getPaidCycles());
-    setHasAccess(hasAICoachAccess(cycle));
-  }, []);
-
-  // 自动滚动到最新消息
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // 如果没有访问权限，显示锁定页面
-  if (!hasAccess) {
-    return <AICoachLocked />;
-  }
+  // Access is determined solely by backend Supabase data, not localStorage
+  const hasAccess = !loading && !!(
+    activeCycle &&
+    activeCycle.hasAICoach &&
+    activeCycle.status === 'active' &&
+    new Date(activeCycle.endsAt).getTime() > Date.now()
+  );
+
+  if (loading) return (
+    <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <Loader2 style={{ width: 24, height: 24, color: C.accent, animation: 'spin 1s linear infinite' }} />
+    </div>
+  );
+
+  if (!hasAccess) return <AICoachLocked />;
 
   const getUserContext = (): string => {
     const assessmentData = localStorage.getItem('assessmentData');
     const techRecommendation = localStorage.getItem('techRecommendation');
-
-    if (!assessmentData) {
-      return '用户尚未完成能力评估。';
-    }
-
+    if (!assessmentData) return '用户尚未完成能力评估。';
     const data = JSON.parse(assessmentData);
     const tech = techRecommendation ? JSON.parse(techRecommendation) : null;
-
-    let context = `用户基本信息：\n`;
-    context += `- 体重：${data.bodyWeight} kg\n`;
-    context += `- 手掌长度：${data.palmLength} cm\n`;
-    context += `- 前臂长度：${data.forearmLength} cm\n`;
-    context += `- 每周训练频率：${data.weeklyFrequency} 次\n\n`;
-
-    if (tech) {
-      context += `推荐技术路线：${tech.recommendedStyle}\n`;
-      context += `理由：${tech.reason}\n\n`;
-    }
-
-    context += `当前力量数据（1RM）：\n`;
-    Object.entries(data.exercises).forEach(([key, value]: [string, any]) => {
-      context += `- ${value.name}：${value.current1RM} kg\n`;
+    let ctx = `用户基本信息：\n- 体重：${data.bodyWeight} kg\n- 手掌长度：${data.palmLength} cm\n- 前臂长度：${data.forearmLength} cm\n- 每周训练频率：${data.weeklyFrequency} 次\n\n`;
+    if (tech) ctx += `推荐技术路线：${tech.recommendedStyle}\n理由：${tech.reason}\n\n`;
+    ctx += `当前力量数据（1RM）：\n`;
+    Object.entries(data.exercises).forEach(([, value]: [string, any]) => {
+      ctx += `- ${value.name}：${value.current1RM} kg\n`;
     });
-
-    return context;
+    return ctx;
   };
 
   const handleSendMessage = async (messageText?: string) => {
     const textToSend = messageText || input;
     if (!textToSend.trim() || isLoading) return;
-
     setError(null);
-    const userMessage: Message = {
-      role: 'user',
-      content: textToSend,
-      timestamp: Date.now(),
-    };
-
+    const userMessage: Message = { role: 'user', content: textToSend, timestamp: Date.now() };
     setMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
-
     try {
-      const userContext = getUserContext();
-
-      // 调用后端 API（安全！）
       const response = await fetch(
         `https://${projectId}.supabase.co/functions/v1/make-server-d7eafa70/ai-coach`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`,
-          },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${publicAnonKey}` },
           body: JSON.stringify({
-            messages: [
-              ...messages.map(m => ({ role: m.role, content: m.content })),
-              { role: 'user', content: textToSend },
-            ],
-            userContext,
+            messages: [...messages.map(m => ({ role: m.role, content: m.content })), { role: 'user', content: textToSend }],
+            userContext: getUserContext(),
           }),
         }
       );
-
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || `请求失败：${response.status}`);
       }
-
       const data = await response.json();
-      const assistantMessage: Message = {
-        role: 'assistant',
-        content: data.message,
-        timestamp: Date.now(),
-      };
-
-      setMessages(prev => [...prev, assistantMessage]);
+      setMessages(prev => [...prev, { role: 'assistant', content: data.message, timestamp: Date.now() }]);
     } catch (err) {
       console.error('AI Coach error:', err);
       setError(err instanceof Error ? err.message : '未知错误');
-
-      const errorMessage: Message = {
-        role: 'assistant',
-        content: '抱歉，我暂时无法回答。请稍后再试或联系技术支持。',
-        timestamp: Date.now(),
-      };
-      setMessages(prev => [...prev, errorMessage]);
+      setMessages(prev => [...prev, { role: 'assistant', content: '抱歉，我暂时无法回答。请稍后再试或联系技术支持。', timestamp: Date.now() }]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleQuickQuestion = (question: string) => {
-    handleSendMessage(question);
-  };
-
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); }
   };
 
   return (
-    <div className="min-h-screen bg-[rgb(var(--background))] text-[rgb(var(--foreground))]">
+    <div style={{ minHeight: '100vh', background: C.bg, color: C.text }}>
       <div className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <div className="flex items-center gap-4 mb-4">
-            <MessageCircle className="w-10 h-10 text-[rgb(var(--power-orange))]" strokeWidth={2} />
-            <div>
-              <h1 className="text-3xl md:text-4xl font-black uppercase tracking-wider">
-                <span className="text-[rgb(var(--power-orange))]">AQUARION</span>{' '}
-                <span className="text-[rgb(var(--foreground))]">AI 教练</span>
-              </h1>
-              <p className="text-sm text-[rgb(var(--muted-foreground))] mt-1">
-                专业手臂摔跤训练顾问 · 随时解答你的训练疑问
-              </p>
-            </div>
+
+        {/* ── Header ── */}
+        <div className="mb-7">
+          <h1
+            className="text-2xl md:text-4xl font-bold uppercase tracking-[0.2em] mb-2"
+            style={{ ...cinzel, color: C.text }}
+          >
+            AQUARION{' '}
+            <span style={{ color: C.accentBrt, textShadow: `0 0 18px ${C.accent}` }}>{t('coach.title')}</span>
+          </h1>
+          <div className="flex items-center gap-3 mb-5">
+            <span style={{ display: 'block', height: 1, width: 32, background: C.accent }} />
+            <p className="text-xs tracking-[0.2em] uppercase" style={{ ...cinzel, color: C.textMuted }}>
+              {t('coach.subtitle')}
+            </p>
           </div>
 
-          <div className="bg-yellow-900/20 border border-yellow-600/50 rounded-lg p-4 flex items-start gap-3">
-            <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-yellow-200">
-              <strong>重要提示：</strong>AI 教练仅提供训练建议，不能替代专业医疗意见。
-              如遇严重疼痛或损伤，请立即就医。AI 教练无法修改你的训练计划或评估数据。
-            </div>
+          {/* Warning banner */}
+          <div style={{
+            background: 'rgba(80,55,10,0.2)',
+            border: '1px solid rgba(180,140,30,0.35)',
+            borderRadius: 4,
+            padding: '12px 16px',
+            display: 'flex', alignItems: 'flex-start', gap: 12,
+          }}>
+            <AlertTriangle style={{ width: 16, height: 16, color: '#c9a830', flexShrink: 0, marginTop: 2 }} />
+            <p style={{ fontSize: '0.8rem', color: '#d4bc72', ...garamond }}>
+              {t("coach.warning")}
+            </p>
           </div>
-
-          {error && error.includes('演示模式') && (
-            <div className="mt-4 bg-orange-900/20 border border-[rgb(var(--power-orange))]/50 rounded-lg p-4 flex items-start gap-3">
-              <MessageCircle className="w-5 h-5 text-[rgb(var(--power-orange))] flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-orange-200">
-                <strong>🤖 演示模式：</strong>当前使用模拟回复。要启用真实的 AI 教练，请配置 OpenAI API 密钥。
-                详见 <code className="bg-orange-950/50 px-1 py-0.5 rounded">AI_COACH_SETUP.md</code> 文件。
-              </div>
-            </div>
-          )}
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* ── Layout grid ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
+
+          {/* Sidebar */}
           <div className="lg:col-span-1">
-            <div className="bg-[rgb(var(--card))] border border-[rgb(var(--border))] rounded-lg p-4 sticky top-4">
-              <h3 className="text-sm font-bold text-[rgb(var(--power-orange))] uppercase mb-4">快捷提问</h3>
+            <div style={{
+              background: C.surface,
+              border: `1px solid ${C.border}`,
+              borderRadius: 4,
+              padding: 16,
+              position: 'sticky',
+              top: 16,
+            }}>
+              <p className="text-xs uppercase tracking-[0.2em] mb-4"
+                style={{ ...cinzel, color: C.accentBrt }}>{t("coach.quickq")}
+              </p>
               <div className="space-y-2">
-                {QUICK_QUESTIONS.map((question, index) => (
+                {QUICK_QUESTIONS.map((q, i) => (
                   <button
-                    key={index}
-                    onClick={() => handleQuickQuestion(question)}
+                    key={i}
+                    onClick={() => handleSendMessage(q)}
                     disabled={isLoading}
-                    className="w-full text-left text-sm p-3 bg-[rgb(var(--background))] hover:bg-orange-900/20 border border-[rgb(var(--border))] hover:border-[rgb(var(--power-orange))]/50 rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{
+                      width: '100%',
+                      textAlign: 'left',
+                      fontSize: '0.8rem',
+                      padding: '10px 12px',
+                      background: 'transparent',
+                      border: `1px solid ${C.border}`,
+                      borderRadius: 3,
+                      color: C.text,
+                      cursor: isLoading ? 'not-allowed' : 'pointer',
+                      opacity: isLoading ? 0.5 : 1,
+                      transition: 'border-color 0.2s, background 0.2s',
+                      ...garamond,
+                    }}
+                    onMouseEnter={e => {
+                      (e.currentTarget as HTMLButtonElement).style.borderColor = C.accent;
+                      (e.currentTarget as HTMLButtonElement).style.background = C.accentDim;
+                    }}
+                    onMouseLeave={e => {
+                      (e.currentTarget as HTMLButtonElement).style.borderColor = C.border;
+                      (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+                    }}
                   >
-                    {question}
+                    {q}
                   </button>
                 ))}
               </div>
             </div>
           </div>
 
+          {/* Chat panel */}
           <div className="lg:col-span-3">
-            <div className="bg-[rgb(var(--card))] border border-[rgb(var(--power-orange))]/30 rounded-lg overflow-hidden flex flex-col" style={{ height: 'calc(100vh - 280px)' }}>
-              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            <div style={{
+              background: C.surface,
+              border: `1px solid ${C.borderGlow}`,
+              borderRadius: 4,
+              display: 'flex',
+              flexDirection: 'column',
+              height: 'calc(100vh - 280px)',
+              boxShadow: C.glow,
+              overflow: 'hidden',
+            }}>
+
+              {/* Messages area */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
                 {messages.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-center text-[rgb(var(--muted-foreground))]">
-                    <Dumbbell className="w-16 h-16 text-[rgb(var(--power-orange))]/30 mb-4" />
-                    <p className="text-lg font-semibold mb-2">欢迎来到 AQUARION AI 教练</p>
-                    <p className="text-sm max-w-md">
-                      我可以回答关于手臂摔跤训练、技术、营养、比赛准备等方面的问题。
-                      <br />
-                      使用左侧的快捷提问或直接输入你的问题。
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', textAlign: 'center', color: C.textMuted }}>
+                    <Zap style={{ width: 48, height: 48, marginBottom: 16, color: C.accent, opacity: 0.4 }} />
+                    <p className="text-base font-semibold mb-2" style={{ ...cinzel, color: C.text, letterSpacing: '0.1em' }}>
+                      {t("coach.welcome")}
+                    </p>
+                    <p style={{ fontSize: '0.9rem', maxWidth: 360, ...garamond, color: C.textMuted, lineHeight: 1.7 }}>
+                      {t("coach.welcome.desc")}
                     </p>
                   </div>
                 ) : (
                   <>
-                    {messages.map((message, index) => (
-                      <div
-                        key={index}
-                        className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                      >
-                        <div
-                          className={`max-w-[80%] rounded-lg p-4 ${
-                            message.role === 'user'
-                              ? 'bg-[rgb(var(--power-orange))] text-white'
-                              : 'bg-[rgb(var(--muted))] text-[rgb(var(--foreground))]'
-                          }`}
-                        >
-                          <div className="text-sm whitespace-pre-wrap">{message.content}</div>
-                          <div className="text-xs opacity-60 mt-2">
-                            {new Date(message.timestamp).toLocaleTimeString('zh-CN', {
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                          </div>
+                    {messages.map((msg, i) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                        <div style={{
+                          maxWidth: '80%',
+                          padding: '12px 16px',
+                          borderRadius: 4,
+                          background: msg.role === 'user' ? C.userBubble : C.aiBubble,
+                          border: `1px solid ${msg.role === 'user' ? 'rgba(120,90,255,0.5)' : C.border}`,
+                          boxShadow: msg.role === 'user' ? `0 0 12px rgba(107,77,224,0.3)` : 'none',
+                        }}>
+                          <p style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap', ...garamond, color: C.text, lineHeight: 1.7 }}>
+                            {msg.content}
+                          </p>
+                          <p style={{ fontSize: '0.7rem', opacity: 0.45, marginTop: 6, color: C.textMuted, ...cinzel }}>
+                            {new Date(msg.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+                          </p>
                         </div>
                       </div>
                     ))}
                     {isLoading && (
-                      <div className="flex justify-start">
-                        <div className="bg-[rgb(var(--muted))] rounded-lg p-4">
-                          <Loader2 className="w-5 h-5 text-[rgb(var(--power-orange))] animate-spin" />
+                      <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                        <div style={{ padding: '12px 16px', background: C.aiBubble, border: `1px solid ${C.border}`, borderRadius: 4 }}>
+                          <Loader2 style={{ width: 18, height: 18, color: C.accent, animation: 'spin 1s linear infinite' }} />
                         </div>
                       </div>
                     )}
@@ -264,35 +261,69 @@ export default function AICoach() {
                 )}
               </div>
 
+              {/* Error bar */}
               {error && (
-                <div className="px-6 py-3 bg-red-900/20 border-t border-red-600/50">
-                  <p className="text-sm text-red-400">错误：{error}</p>
+                <div style={{ padding: '10px 24px', background: 'rgba(120,20,20,0.2)', borderTop: '1px solid rgba(200,50,50,0.3)' }}>
+                  <p style={{ fontSize: '0.8rem', color: '#f87171' }}>错误：{error}</p>
                 </div>
               )}
 
-              <div className="border-t border-[rgb(var(--power-orange))]/30 p-4 bg-[rgb(var(--background))]">
-                <div className="flex gap-2">
-                  <textarea
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    placeholder="输入你的问题... (Enter 发送，Shift+Enter 换行)"
-                    disabled={isLoading}
-                    className="flex-1 bg-[rgb(var(--card))] border border-[rgb(var(--border))] rounded-lg px-4 py-3 text-sm resize-none focus:outline-none focus:border-[rgb(var(--power-orange))]/50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    rows={3}
-                  />
-                  <Button
-                    onClick={() => handleSendMessage()}
-                    disabled={!input.trim() || isLoading}
-                    className="bg-[rgb(var(--power-orange))] hover:bg-[rgb(var(--power-orange))]/90 text-white px-6 self-end"
-                  >
-                    {isLoading ? (
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                    ) : (
-                      <Send className="w-5 h-5" />
-                    )}
-                  </Button>
-                </div>
+              {/* Input bar */}
+              <div style={{
+                borderTop: `1px solid ${C.borderGlow}`,
+                padding: 16,
+                background: C.bg,
+                display: 'flex',
+                gap: 10,
+              }}>
+                <textarea
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyPress={handleKeyPress}
+                  placeholder={t("coach.placeholder")}
+                  disabled={isLoading}
+                  rows={3}
+                  style={{
+                    flex: 1,
+                    background: C.surface,
+                    border: `1px solid ${C.border}`,
+                    borderRadius: 3,
+                    padding: '10px 14px',
+                    fontSize: '0.875rem',
+                    resize: 'none',
+                    color: C.text,
+                    outline: 'none',
+                    ...garamond,
+                    opacity: isLoading ? 0.5 : 1,
+                    transition: 'border-color 0.2s',
+                  }}
+                  onFocus={e => (e.target.style.borderColor = C.accent)}
+                  onBlur={e => (e.target.style.borderColor = C.border)}
+                />
+                <button
+                  onClick={() => handleSendMessage()}
+                  disabled={!input.trim() || isLoading}
+                  style={{
+                    padding: '0 22px',
+                    background: (!input.trim() || isLoading) ? 'rgba(107,77,224,0.25)' : C.accent,
+                    border: `1px solid ${C.accent}`,
+                    borderRadius: 3,
+                    color: '#fff',
+                    cursor: (!input.trim() || isLoading) ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'background 0.2s, box-shadow 0.2s',
+                    boxShadow: (!input.trim() || isLoading) ? 'none' : C.glow,
+                    alignSelf: 'flex-end',
+                    height: 48,
+                  }}
+                >
+                  {isLoading
+                    ? <Loader2 style={{ width: 18, height: 18, animation: 'spin 1s linear infinite' }} />
+                    : <Send style={{ width: 18, height: 18 }} />
+                  }
+                </button>
               </div>
             </div>
           </div>

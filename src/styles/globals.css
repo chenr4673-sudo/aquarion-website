@@ -1,0 +1,29 @@
+/* Global cinematic overrides */
+button, [data-slot="button"] {
+  font-family: 'Cinzel', Georgia, serif;
+  letter-spacing: 0.1em;
+}
+
+input, textarea, select {
+  font-family: 'EB Garamond', Georgia, serif;
+}
+
+label {
+  font-family: 'Cinzel', Georgia, serif;
+  letter-spacing: 0.08em;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: #000;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--power-red) / 0.4);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--power-red) / 0.7);
+}
