@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Button } from '../components/ui/button';
 import { Switch } from '../components/ui/switch';
-import { Checkbox } from '../components/ui/checkbox';
 import { Label } from '../components/ui/label';
 import {
   AlertDialog,
@@ -14,7 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '../components/ui/alert-dialog';
-import { ChevronLeft, ChevronRight, Calendar, Target, Dumbbell, Info, AlertTriangle, Heart, Lock } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, Calendar, Target, Dumbbell, Info, AlertTriangle, Heart, Lock } from 'lucide-react';
 import { motion } from 'motion/react';
 
 // 常量定义
@@ -386,32 +385,32 @@ export default function TrainingPlan() {
                     '肘部内侧',
                     '肘部外侧'
                   ].map(part => (
-                    <div
+                    <button
                       key={part}
-                      className="flex items-center space-x-2 p-3 border rounded cursor-pointer hover:bg-[rgb(var(--muted))]/50"
+                      type="button"
+                      role="checkbox"
+                      aria-checked={injuredParts.includes(part)}
+                      className="flex items-center gap-3 p-3 border rounded cursor-pointer hover:bg-[rgb(var(--muted))]/50 text-left"
                       style={{
                         borderColor: injuredParts.includes(part) ? 'rgb(var(--klein-blue))' : 'rgb(var(--border))',
                         backgroundColor: injuredParts.includes(part) ? 'rgb(59, 130, 246, 0.1)' : 'transparent'
                       }}
                       onClick={() => handleInjuredPartToggle(part)}
                     >
-                      <Checkbox
-                        id={part}
-                        checked={injuredParts.includes(part)}
-                        onCheckedChange={() => handleInjuredPartToggle(part)}
-                        className="w-5 h-5"
+                      <span
+                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded border"
                         style={{
                           borderColor: injuredParts.includes(part) ? 'rgb(var(--klein-blue))' : 'rgb(100, 100, 100)',
                           backgroundColor: injuredParts.includes(part) ? 'rgb(var(--klein-blue))' : 'transparent',
+                          color: 'white',
                         }}
-                      />
-                      <Label
-                        htmlFor={part}
-                        className="flex-1 cursor-pointer font-medium"
                       >
+                        {injuredParts.includes(part) && <Check className="h-3.5 w-3.5" />}
+                      </span>
+                      <span className="flex-1 font-medium">
                         {part}
-                      </Label>
-                    </div>
+                      </span>
+                    </button>
                   ))}
                 </div>
 
