@@ -36,15 +36,38 @@ export default function Home() {
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [checkoutError, setCheckoutError] = useState('');
 
+  const hasActiveCycle = () => (
+    !!activeCycle &&
+    activeCycle.status === 'active' &&
+    new Date(activeCycle.endsAt).getTime() > Date.now()
+  );
+
+  const ownsPlan = () => hasActiveCycle() && activeCycle?.hasPlan === true;
+  const ownsAi = () => hasActiveCycle() && activeCycle?.hasAICoach === true;
+
   const alreadyOwns = (productType: 'plan' | 'ai' | 'bundle') => {
-    if (!activeCycle || activeCycle.status !== 'active' || new Date(activeCycle.endsAt).getTime() <= Date.now()) {
-      return false;
+    if (productType === 'plan') return ownsPlan();
+    if (productType === 'ai') return ownsAi();
+    return ownsPlan() && ownsAi();
+  };
+
+  const bundleUnavailable = () => hasActiveCycle() && (ownsPlan() || ownsAi());
+
+  const bundleUnavailableLabel = () => (
+    alreadyOwns('bundle')
+      ? (lang === 'en' ? '✓ Already owned' : '✓ 已拥有')
+      : (lang === 'en' ? 'Single item owned' : '已购买单项，不可买组合')
+  );
+
+  const unavailableBundleMessage = () => {
+    if (alreadyOwns('bundle')) {
+      return lang === 'en'
+        ? 'You already own the full bundle for this cycle.'
+        : '你已经拥有当前周期的完整组合。';
     }
-    const ownsPlan = activeCycle.hasPlan === true;
-    const ownsAi = activeCycle.hasAICoach === true;
-    if (productType === 'plan') return ownsPlan;
-    if (productType === 'ai') return ownsAi;
-    return ownsPlan && ownsAi;
+    return lang === 'en'
+      ? 'The bundle is only available before buying any single item. Please buy the missing single product instead.'
+      : '组合套餐只适合当前周期还没购买任何服务时直接购买。你已购买单项服务，请单独加购缺少的功能。';
   };
 
   // Open pricing — requires login, but users with one product can add the other.
@@ -61,6 +84,11 @@ export default function Home() {
     if (!user || !session) {
       setAuthTab('login');
       setAuthModalOpen(true);
+      return;
+    }
+
+    if (productType === 'bundle' && bundleUnavailable()) {
+      alert(unavailableBundleMessage());
       return;
     }
 
@@ -162,8 +190,7 @@ export default function Home() {
             <div className="flex items-center justify-center gap-3 mb-6">
               <span style={{ fontSize: '0.6rem', letterSpacing: '0.15em', color: 'rgb(var(--muted-foreground))', ...cinzelStyle }}>支持</span>
               <span className="text-xs px-2 py-0.5 border border-[rgb(var(--border))] text-[rgb(var(--muted-foreground))]" style={cinzelStyle}>💳 信用卡</span>
-              <span className="text-xs px-2 py-0.5 border border-[rgb(var(--border))] text-[rgb(var(--muted-foreground))]" style={cinzelStyle}>💚 微信支付</span>
-              <span className="text-xs px-2 py-0.5 border border-[rgb(var(--border))] text-[rgb(var(--muted-foreground))]" style={cinzelStyle}>🔵 支付宝</span>
+              <span className="text-xs px-2 py-0.5 border border-[rgb(var(--border))] text-[rgb(var(--muted-foreground))]" style={cinzelStyle}>Stripe 可用方式</span>
             </div>
 
             {/* CTA */}
@@ -185,7 +212,7 @@ export default function Home() {
                     选择你的 AQUARION 训练服务
                   </DialogTitle>
                   <DialogDescription className="text-[rgb(var(--muted-foreground))]" style={garamondStyle}>
-                    所有服务均以 6 周为一个周期 · 支持微信支付、支付宝、信用卡
+                    所有服务均以 6 周为一个周期 · 支付方式以 Stripe 结账页实际显示为准
                   </DialogDescription>
                 </DialogHeader>
 
@@ -222,17 +249,16 @@ export default function Home() {
                     description=""
                     onCheckout={() => handleCheckout('bundle')}
                     loading={checkoutLoading === 'bundle'}
-                    owned={alreadyOwns('bundle')}
+                    owned={bundleUnavailable()}
+                    ownedLabel={bundleUnavailableLabel()}
                     recommended
                   />
                 </div>
 
                 <div className="mt-4 flex items-center justify-center gap-4 text-xs text-[rgb(var(--muted-foreground))]" style={cinzelStyle}>
                   <span>💳 Visa / Mastercard</span>
-                  <span>💚 微信支付</span>
-                  <span>🔵 支付宝</span>
                   <span className="text-[rgb(var(--border))]">·</span>
-                  <span>🔒 由 Stripe 安全加密</span>
+                  <span>🔒 Stripe 安全加密 · 其他方式以结账页显示为准</span>
                 </div>
               </DialogContent>
             </Dialog>
@@ -297,7 +323,7 @@ export default function Home() {
           <SectionTitle>付费说明</SectionTitle>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <PaymentInfoCard icon={<CreditCard className="w-5 h-5 text-[rgb(var(--power-red))]" />} title="安全在线支付"
-              description="通过 Stripe 全球支付平台处理，支持微信支付、支付宝、Visa、Mastercard 等，银行级安全加密。" />
+              description="通过 Stripe 全球支付平台处理，支持信用卡等已开通的安全支付方式；具体以结账页实际显示为准。" />
             <PaymentInfoCard icon={<MessageCircle className="w-5 h-5 text-[rgb(var(--power-red))]" />} title="购买记录云端保存"
               description="支付完成后，你的训练周期自动绑定到账号，换设备或刷新页面均不会丢失。" />
             <PaymentInfoCard icon={<Lock className="w-5 h-5 text-[rgb(var(--power-gold))]" />} title="6 周后必须重新评估"
@@ -387,9 +413,9 @@ function PaymentInfoCard({ icon, title, description }: { icon: React.ReactNode; 
   );
 }
 
-function PricingCard({ title, subtitle, price, features, description, onCheckout, loading, recommended = false, owned = false }: {
+function PricingCard({ title, subtitle, price, features, description, onCheckout, loading, recommended = false, owned = false, ownedLabel }: {
   title: string; subtitle?: string; price: number; features: string[]; description: string;
-  onCheckout: () => void; loading: boolean; recommended?: boolean; owned?: boolean;
+  onCheckout: () => void; loading: boolean; recommended?: boolean; owned?: boolean; ownedLabel?: string;
 }) {
   const { t, lang } = useLanguage();
   return (
@@ -430,7 +456,7 @@ function PricingCard({ title, subtitle, price, features, description, onCheckout
         onMouseLeave={e => !loading && !owned && ((e.currentTarget as HTMLButtonElement).style.background = 'none')}
       >
         {owned
-          ? <>{lang === 'en' ? '✓ Already owned' : '✓ 已拥有'}</>
+          ? <>{ownedLabel || (lang === 'en' ? '✓ Already owned' : '✓ 已拥有')}</>
           : loading
             ? <><Loader2 className="w-4 h-4 animate-spin" />{t('pricing.loading')}</>
             : <><CreditCard className="w-4 h-4" />{t('pricing.buy')}</>

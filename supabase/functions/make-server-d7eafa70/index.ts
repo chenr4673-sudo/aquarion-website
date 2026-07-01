@@ -51,7 +51,14 @@ function cycleIncludesProduct(cycle: any, productType: ProductType) {
   if (!cycle) return false;
   if (productType === 'plan') return cycle.hasPlan === true;
   if (productType === 'ai') return cycle.hasAICoach === true;
-  return cycle.hasPlan === true && cycle.hasAICoach === true;
+  return cycle.hasPlan === true || cycle.hasAICoach === true;
+}
+
+function alreadyActiveMessage(cycle: any, productType: ProductType, remaining: number) {
+  if (productType === 'bundle' && (cycle.hasPlan === true || cycle.hasAICoach === true)) {
+    return `组合套餐仅适用于当前周期尚未购买任何服务的用户。你已拥有单项服务，可单独加购缺少的功能，当前周期剩余 ${remaining} 天。`;
+  }
+  return `你已经拥有该功能，当前周期剩余 ${remaining} 天`;
 }
 
 function mergedCycleType(hasPlan: boolean, hasAICoach: boolean): ProductType {
@@ -153,7 +160,7 @@ async function activatePaidProduct(params: {
 }
 
 // ── Health ────────────────────────────────────────────────────────────────────
-app.get("/make-server-d7eafa70/health", (c) => c.json({ status: "ok", version: "assessment-limit-fix" }));
+app.get("/make-server-d7eafa70/health", (c) => c.json({ status: "ok", version: "checkout-methods-fix" }));
 
 // ── Auth: Register ────────────────────────────────────────────────────────────
 app.post("/make-server-d7eafa70/auth/register", async (c) => {
@@ -215,7 +222,7 @@ app.post("/make-server-d7eafa70/user/activate-code", async (c) => {
     const { active } = await getActiveCycle(user.userId);
     if (active && cycleIncludesProduct(active, productType)) {
       const remaining = Math.ceil((new Date(active.endsAt).getTime() - Date.now()) / 86400000);
-      return c.json({ error: "already_active", message: `你已经拥有该功能，当前周期剩余 ${remaining} 天`, cycle: active, remainingDays: remaining }, 409);
+      return c.json({ error: "already_active", message: alreadyActiveMessage(active, productType, remaining), cycle: active, remainingDays: remaining }, 409);
     }
     const codeRecord = await kv.get(`invite_code:${inviteCode}`);
     if (codeRecord && (codeRecord as any).usedAt) return c.json({ error: "该邀请码已被使用" }, 409);
@@ -311,15 +318,12 @@ app.post("/make-server-d7eafa70/payment/create-checkout", async (c) => {
     const { active } = await getActiveCycle(user.userId);
     if (active && cycleIncludesProduct(active, productType)) {
       const remaining = Math.ceil((new Date(active.endsAt).getTime() - Date.now()) / 86400000);
-      return c.json({ error: "already_active", message: `你已经拥有该功能，当前周期剩余 ${remaining} 天`, remainingDays: remaining, cycle: active }, 409);
+      return c.json({ error: "already_active", message: alreadyActiveMessage(active, productType, remaining), remainingDays: remaining, cycle: active }, 409);
     }
 
     const stripe = stripeClient();
     const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card", "wechat_pay", "alipay"],
-      payment_method_options: {
-        wechat_pay: { client: "web" },
-      },
+      automatic_payment_methods: { enabled: true },
       line_items: [{
         price_data: {
           currency: "aud",

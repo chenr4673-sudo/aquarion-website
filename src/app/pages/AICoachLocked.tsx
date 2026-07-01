@@ -143,7 +143,7 @@ export default function AICoachLocked() {
 
           {/* 价格和购买 */}
           <div className="bg-gradient-to-br from-orange-900/20 to-orange-600/10 border-2 border-[rgb(var(--power-orange))]/50 rounded-lg p-8 mb-6">
-            <div className="text-5xl font-black text-[rgb(var(--power-orange))] mb-2">¥{PRICE_AI_COACH}</div>
+            <div className="text-5xl font-black text-[rgb(var(--power-orange))] mb-2">{CURRENCY}{PRICE_AI_COACH}</div>
             <div className="text-[rgb(var(--muted-foreground))] mb-6">一周期 = 6周</div>
 
             {error && (
