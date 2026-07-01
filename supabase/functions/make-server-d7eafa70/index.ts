@@ -160,7 +160,7 @@ async function activatePaidProduct(params: {
 }
 
 // ── Health ────────────────────────────────────────────────────────────────────
-app.get("/make-server-d7eafa70/health", (c) => c.json({ status: "ok", version: "checkout-methods-fix" }));
+app.get("/make-server-d7eafa70/health", (c) => c.json({ status: "ok", version: "card-checkout-fix" }));
 
 // ── Auth: Register ────────────────────────────────────────────────────────────
 app.post("/make-server-d7eafa70/auth/register", async (c) => {
@@ -323,7 +323,7 @@ app.post("/make-server-d7eafa70/payment/create-checkout", async (c) => {
 
     const stripe = stripeClient();
     const session = await stripe.checkout.sessions.create({
-      automatic_payment_methods: { enabled: true },
+      payment_method_types: ["card"],
       line_items: [{
         price_data: {
           currency: "aud",

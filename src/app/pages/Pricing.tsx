@@ -5,7 +5,7 @@ export function Pricing() {
   const plans = [
     {
       name: "基础版",
-      price: "¥99",
+      price: "A$99",
       period: "/月",
       description: "适合腕力新手",
       features: [
@@ -21,7 +21,7 @@ export function Pricing() {
     },
     {
       name: "专业版",
-      price: "¥199",
+      price: "A$199",
       period: "/月",
       description: "最受欢迎的选择",
       features: [
@@ -39,7 +39,7 @@ export function Pricing() {
     },
     {
       name: "精英版",
-      price: "¥399",
+      price: "A$399",
       period: "/月",
       description: "适合认真的竞技者",
       features: [
@@ -139,7 +139,7 @@ export function Pricing() {
             <div>
               <h3 className="mb-2">支持哪些支付方式？</h3>
               <p className="text-[rgb(var(--muted-foreground))] text-sm">
-                我们支持信用卡、支付宝、微信支付等多种支付方式。
+                目前优先支持信用卡支付，由 Stripe 安全处理。
               </p>
             </div>
 

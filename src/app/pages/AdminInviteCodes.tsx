@@ -46,7 +46,7 @@ export default function AdminInviteCodes() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           <Card className="p-6">
             <h3 className="text-xl font-bold mb-4 text-[rgb(var(--power-red))]">训练计划</h3>
-            <p className="text-sm text-[rgb(var(--muted-foreground))] mb-4">¥30 / 6周</p>
+            <p className="text-sm text-[rgb(var(--muted-foreground))] mb-4">A$20 / 6周</p>
             <div className="space-y-2">
               <Button
                 onClick={() => handleGenerateSingle('plan')}
@@ -66,7 +66,7 @@ export default function AdminInviteCodes() {
 
           <Card className="p-6">
             <h3 className="text-xl font-bold mb-4 text-[rgb(var(--power-orange))]">AI 教练</h3>
-            <p className="text-sm text-[rgb(var(--muted-foreground))] mb-4">¥150 / 6周</p>
+            <p className="text-sm text-[rgb(var(--muted-foreground))] mb-4">A$99 / 6周</p>
             <div className="space-y-2">
               <Button
                 onClick={() => handleGenerateSingle('ai')}
@@ -86,7 +86,7 @@ export default function AdminInviteCodes() {
 
           <Card className="p-6">
             <h3 className="text-xl font-bold mb-4 text-[rgb(var(--power-gold))]">完整体验</h3>
-            <p className="text-sm text-[rgb(var(--muted-foreground))] mb-4">¥180 / 6周</p>
+            <p className="text-sm text-[rgb(var(--muted-foreground))] mb-4">A$110 / 6周</p>
             <div className="space-y-2">
               <Button
                 onClick={() => handleGenerateSingle('bundle')}

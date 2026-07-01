@@ -14,16 +14,16 @@ export function Subscription() {
     {
       id: "monthly",
       name: "月度订阅",
-      price: "¥99",
+      price: "A$99",
       period: "每月",
       description: "按月付费，随时取消"
     },
     {
       id: "yearly",
       name: "年度订阅",
-      price: "¥999",
+      price: "A$999",
       period: "每年",
-      description: "节省 ¥189，相当于每月 ¥83",
+      description: "节省 A$189，相当于每月 A$83",
       badge: "推荐"
     }
   ];
