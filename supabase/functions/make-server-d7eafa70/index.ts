@@ -160,18 +160,23 @@ async function activatePaidProduct(params: {
 }
 
 // ── Health ────────────────────────────────────────────────────────────────────
-app.get("/make-server-d7eafa70/health", (c) => c.json({ status: "ok", version: "card-checkout-fix" }));
+app.get("/make-server-d7eafa70/health", (c) => c.json({ status: "ok", version: "register-auth-header-fix" }));
 
 // ── Auth: Register ────────────────────────────────────────────────────────────
 app.post("/make-server-d7eafa70/auth/register", async (c) => {
   try {
     const { email, password } = await c.req.json();
-    if (!email || !password) return c.json({ error: "邮箱和密码不能为空" }, 400);
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    if (!normalizedEmail || !password) return c.json({ error: "邮箱和密码不能为空" }, 400);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) return c.json({ error: "请输入有效的邮箱地址" }, 400);
     if (password.length < 6) return c.json({ error: "密码至少需要6位" }, 400);
-    const { data, error } = await adminClient().auth.admin.createUser({ email, password, email_confirm: true });
+    const { data, error } = await adminClient().auth.admin.createUser({ email: normalizedEmail, password, email_confirm: true });
     if (error) {
-      if (error.message.includes("already registered") || error.message.includes("already been registered"))
+      const message = error.message.toLowerCase();
+      if (message.includes("already registered") || message.includes("already been registered") || message.includes("already exists"))
         return c.json({ error: "该邮箱已注册，请直接登录" }, 409);
+      if (message.includes("password")) return c.json({ error: "密码不符合要求，请换一个更强的密码" }, 400);
+      if (message.includes("email")) return c.json({ error: "邮箱格式不正确，或当前邮箱暂时无法注册" }, 400);
       return c.json({ error: `注册失败：${error.message}` }, 400);
     }
     await kv.set(`user_profile:${data.user.id}`, { userId: data.user.id, email: data.user.email, createdAt: new Date().toISOString() });

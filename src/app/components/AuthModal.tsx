@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Loader2, Lock, Mail, X } from 'lucide-react';
 import { supabase } from '../context/AuthContext';
-import { projectId } from '../../utils/supabase/info';
+import { projectId, publicAnonKey } from '../../utils/supabase/info';
 
 interface AuthModalProps {
   open: boolean;
@@ -37,7 +37,11 @@ export function AuthModal({ open, onClose, defaultTab = 'login' }: AuthModalProp
       if (tab === 'register') {
         const res = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-d7eafa70/auth/register`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: publicAnonKey,
+            Authorization: `Bearer ${publicAnonKey}`,
+          },
           body: JSON.stringify({ email, password }),
         });
         const data = await res.json().catch(() => ({}));
