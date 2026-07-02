@@ -39,7 +39,6 @@ export function AuthModal({ open, onClose, defaultTab = 'login' }: AuthModalProp
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            apikey: publicAnonKey,
             Authorization: `Bearer ${publicAnonKey}`,
           },
           body: JSON.stringify({ email, password }),

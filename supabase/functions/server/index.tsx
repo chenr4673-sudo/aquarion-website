@@ -10,7 +10,7 @@ const app = new Hono();
 app.use('*', logger(console.log));
 app.use("/*", cors({
   origin: "*",
-  allowHeaders: ["Content-Type", "Authorization", "stripe-signature"],
+  allowHeaders: ["Content-Type", "Authorization", "apikey", "stripe-signature"],
   allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   exposeHeaders: ["Content-Length"],
   maxAge: 600,
@@ -160,7 +160,7 @@ async function activatePaidProduct(params: {
 }
 
 // ── Health ────────────────────────────────────────────────────────────────────
-app.get("/make-server-d7eafa70/health", (c) => c.json({ status: "ok", version: "register-auth-header-fix" }));
+app.get("/make-server-d7eafa70/health", (c) => c.json({ status: "ok", version: "register-cors-fix" }));
 
 // ── Auth: Register ────────────────────────────────────────────────────────────
 app.post("/make-server-d7eafa70/auth/register", async (c) => {
